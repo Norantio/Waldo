@@ -1,0 +1,7 @@
+/* Hugo Inventory Admin Styles */
+.wrap .wp-heading-inline {
+    display: inline-block;
+}
+.wrap .page-title-action {
+    margin-left: 8px;
+}
