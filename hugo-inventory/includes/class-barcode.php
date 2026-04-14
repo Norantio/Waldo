@@ -31,13 +31,29 @@ class Barcode {
      */
     public static function qr_svg( string $data, int $scale = 5 ): string {
         $options = new QROptions( [
-            'outputInterface' => QRMarkupSVG::class,
-            'scale'           => $scale,
-            'quietzoneSize'   => 2,
+            'outputInterface'      => QRMarkupSVG::class,
+            'scale'                => $scale,
+            'quietzoneSize'        => 2,
             'svgUseFillAttributes' => true,
+            'outputBase64'         => false,
         ] );
 
-        return ( new QRCode( $options ) )->render( $data );
+        $svg = ( new QRCode( $options ) )->render( $data );
+
+        // Strip XML declaration — it breaks inline HTML embedding.
+        $svg = preg_replace( '/<\?xml[^?]*\?>\s*/i', '', $svg );
+
+        // The library outputs SVG without width/height attributes (only viewBox).
+        // Add explicit dimensions so the SVG renders at a visible size inline.
+        $size = 25 * $scale; // viewBox units * scale
+        $svg  = preg_replace(
+            '/<svg\b/',
+            '<svg width="' . $size . '" height="' . $size . '"',
+            $svg,
+            1
+        );
+
+        return $svg;
     }
 
     /**
@@ -68,7 +84,13 @@ class Barcode {
      */
     public static function barcode_svg( string $data, float $widthFactor = 2.0, float $height = 40.0 ): string {
         $generator = new BarcodeGeneratorSVG();
-        return $generator->getBarcode( $data, BarcodeGenerator::TYPE_CODE_128, $widthFactor, $height );
+        $svg       = $generator->getBarcode( $data, BarcodeGenerator::TYPE_CODE_128, $widthFactor, $height );
+
+        // Strip XML declaration and DOCTYPE — they break inline HTML embedding.
+        $svg = preg_replace( '/<\?xml[^?]*\?>\s*/i', '', $svg );
+        $svg = preg_replace( '/<!DOCTYPE[^>]*>\s*/i', '', $svg );
+
+        return $svg;
     }
 
     /**

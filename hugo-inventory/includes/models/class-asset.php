@@ -249,13 +249,15 @@ class Asset {
                             o.name  AS organization_name,
                             c.name  AS category_name,
                             l.name  AS location_name,
-                            tp.name AS type_name
+                            tp.name AS type_name,
+                            u.display_name AS assigned_user_display
                             {$select_extra}
                      FROM {$t} a
                      LEFT JOIN {$p}inventory_organizations o  ON a.organization_id = o.id
                      LEFT JOIN {$p}inventory_categories    c  ON a.category_id     = c.id
                      LEFT JOIN {$p}inventory_locations     l  ON a.location_id     = l.id
                      LEFT JOIN {$p}inventory_types         tp ON a.type_id         = tp.id
+                     LEFT JOIN {$wpdb->users}              u  ON a.assigned_user_id = u.ID
                      {$where_sql}
                      ORDER BY {$order_col} {$order}
                      LIMIT %d OFFSET %d";
@@ -320,38 +322,89 @@ class Asset {
             $status = 'available';
         }
 
-        // Generate asset tag.
-        $asset_tag = self::generate_asset_tag();
+        // Use manually provided asset tag, or auto-generate one.
+        $asset_tag = ! empty( $data['asset_tag'] )
+            ? sanitize_text_field( $data['asset_tag'] )
+            : self::generate_asset_tag();
 
         // Set barcode_value to asset_tag if not provided.
         $barcode_value = ! empty( $data['barcode_value'] )
             ? sanitize_text_field( $data['barcode_value'] )
             : $asset_tag;
 
-        $result = $wpdb->insert(
-            self::table(),
-            [
-                'organization_id'   => (int) $data['organization_id'],
-                'asset_tag'         => $asset_tag,
-                'name'              => sanitize_text_field( $data['name'] ),
-                'description'       => isset( $data['description'] ) ? sanitize_textarea_field( $data['description'] ) : null,
-                'serial_number'     => isset( $data['serial_number'] ) ? sanitize_text_field( $data['serial_number'] ) : null,
-                'barcode_value'     => $barcode_value,
-                'type_id'           => ! empty( $data['type_id'] ) ? (int) $data['type_id'] : self::get_default_type_id(),
-                'category_id'       => ! empty( $data['category_id'] ) ? (int) $data['category_id'] : null,
-                'location_id'       => ! empty( $data['location_id'] ) ? (int) $data['location_id'] : null,
-                'assigned_user_id'  => ! empty( $data['assigned_user_id'] ) ? (int) $data['assigned_user_id'] : null,
-                'status'            => $status,
-                'purchase_date'     => ! empty( $data['purchase_date'] ) ? sanitize_text_field( $data['purchase_date'] ) : null,
-                'purchase_cost'     => isset( $data['purchase_cost'] ) ? (float) $data['purchase_cost'] : null,
-                'warranty_expiration' => ! empty( $data['warranty_expiration'] ) ? sanitize_text_field( $data['warranty_expiration'] ) : null,
-                'created_by'        => get_current_user_id(),
-            ],
-            [ '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d', '%s', '%s', '%f', '%s', '%d' ]
-        );
+        // Build insert data dynamically — skip null values for nullable FK columns
+        // so MySQL uses DEFAULT NULL instead of inserting 0.
+        $insert_data    = [];
+        $insert_formats = [];
+
+        // Required fields.
+        $insert_data['organization_id'] = (int) $data['organization_id'];
+        $insert_formats[]               = '%d';
+
+        $insert_data['asset_tag'] = $asset_tag;
+        $insert_formats[]         = '%s';
+
+        $insert_data['name'] = sanitize_text_field( $data['name'] );
+        $insert_formats[]    = '%s';
+
+        // Optional text/string fields — safe to insert as null.
+        if ( ! empty( $data['description'] ) ) {
+            $insert_data['description'] = sanitize_textarea_field( $data['description'] );
+            $insert_formats[]           = '%s';
+        }
+        if ( ! empty( $data['serial_number'] ) ) {
+            $insert_data['serial_number'] = sanitize_text_field( $data['serial_number'] );
+            $insert_formats[]             = '%s';
+        }
+
+        $insert_data['barcode_value'] = $barcode_value;
+        $insert_formats[]             = '%s';
+
+        // Nullable FK integer fields — only include if they have a real value.
+        $type_id = ! empty( $data['type_id'] ) ? (int) $data['type_id'] : self::get_default_type_id();
+        if ( $type_id ) {
+            $insert_data['type_id'] = $type_id;
+            $insert_formats[]       = '%d';
+        }
+        if ( ! empty( $data['category_id'] ) ) {
+            $insert_data['category_id'] = (int) $data['category_id'];
+            $insert_formats[]           = '%d';
+        }
+        if ( ! empty( $data['location_id'] ) ) {
+            $insert_data['location_id'] = (int) $data['location_id'];
+            $insert_formats[]           = '%d';
+        }
+        if ( ! empty( $data['assigned_user_id'] ) ) {
+            $insert_data['assigned_user_id'] = (int) $data['assigned_user_id'];
+            $insert_formats[]                = '%d';
+        }
+
+        $insert_data['status'] = $status;
+        $insert_formats[]      = '%s';
+
+        if ( ! empty( $data['purchase_date'] ) ) {
+            $insert_data['purchase_date'] = sanitize_text_field( $data['purchase_date'] );
+            $insert_formats[]             = '%s';
+        }
+        if ( ! empty( $data['purchase_cost'] ) ) {
+            $insert_data['purchase_cost'] = (float) $data['purchase_cost'];
+            $insert_formats[]             = '%f';
+        }
+        if ( ! empty( $data['warranty_expiration'] ) ) {
+            $insert_data['warranty_expiration'] = sanitize_text_field( $data['warranty_expiration'] );
+            $insert_formats[]                   = '%s';
+        }
+
+        $insert_data['created_by'] = get_current_user_id();
+        $insert_formats[]          = '%d';
+
+        $result = $wpdb->insert( self::table(), $insert_data, $insert_formats );
 
         if ( ! $result ) {
-            return new \WP_Error( 'insert_failed', __( 'Failed to create asset.', 'hugo-inventory' ) );
+            return new \WP_Error(
+                'insert_failed',
+                __( 'Failed to create asset.', 'hugo-inventory' ) . ' DB: ' . $wpdb->last_error
+            );
         }
 
         return (int) $wpdb->insert_id;
@@ -370,7 +423,7 @@ class Asset {
         $fields  = [];
         $formats = [];
 
-        $text_fields = [ 'name', 'serial_number', 'barcode_value' ];
+        $text_fields = [ 'name', 'serial_number', 'barcode_value', 'asset_tag' ];
         foreach ( $text_fields as $f ) {
             if ( isset( $data[ $f ] ) ) {
                 $fields[ $f ] = sanitize_text_field( $data[ $f ] );
@@ -451,17 +504,18 @@ class Asset {
         $settings = get_option( 'hugo_inventory_settings', [] );
         $prefix   = $settings['asset_tag_prefix'] ?? 'HUGO';
         $digits   = $settings['asset_tag_digits'] ?? 6;
+        $table    = self::table();
 
-        // Atomic increment to prevent race conditions.
-        $wpdb->query(
-            "UPDATE {$wpdb->options}
-             SET option_value = option_value + 1
-             WHERE option_name = 'hugo_inventory_asset_tag_counter'"
-        ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+        // Strategy: ignore the options counter entirely.
+        // Query the assets table directly for the highest existing number,
+        // then increment. This is always accurate regardless of cache state.
+        $max_num = (int) $wpdb->get_var(
+            "SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(asset_tag, '-', -1) AS UNSIGNED)), 0) FROM {$table}"
+        );
 
-        $counter = (int) get_option( 'hugo_inventory_asset_tag_counter', 1 );
+        $next = $max_num + 1;
 
-        return $prefix . '-' . str_pad( (string) $counter, $digits, '0', STR_PAD_LEFT );
+        return $prefix . '-' . str_pad( (string) $next, $digits, '0', STR_PAD_LEFT );
     }
 
     /**

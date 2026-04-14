@@ -43,16 +43,12 @@
         bindEvents: function() {
             var self = this;
 
+            // Track whether we just handled a scanner Enter on keydown,
+            // so we can suppress the same Enter on keypress/keyup.
+            var suppressNextEnter = false;
+
             $(document).on('keydown', function(e) {
                 if (!self.isActive) return;
-
-                // Don't intercept if user is focused on an input/textarea
-                // (unless it has the .hugo-inv-scan-field class).
-                var tag = e.target.tagName.toLowerCase();
-                var isScanField = $(e.target).hasClass('hugo-inv-scan-field');
-                if ((tag === 'input' || tag === 'textarea' || tag === 'select') && !isScanField) {
-                    return;
-                }
 
                 var now = Date.now();
                 var timeDiff = now - self.lastKeyTime;
@@ -64,11 +60,23 @@
 
                 self.lastKeyTime = now;
 
-                // Enter key — process the buffer.
+                // Enter key — process the buffer if it looks like a scan.
                 if (e.key === 'Enter') {
                     if (self.buffer.length >= self.minLength) {
                         e.preventDefault();
-                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                        suppressNextEnter = true;
+
+                        // If scanned into a form field, clear the injected text.
+                        var tag = e.target.tagName.toLowerCase();
+                        if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+                            var el = e.target;
+                            var val = $(el).val() || '';
+                            if (val.length >= self.buffer.length && val.slice(-self.buffer.length) === self.buffer) {
+                                $(el).val(val.slice(0, -self.buffer.length));
+                            }
+                        }
+
                         self.processBarcode(self.buffer);
                     }
                     self.buffer = '';
@@ -78,6 +86,19 @@
                 // Only append printable single characters.
                 if (e.key.length === 1) {
                     self.buffer += e.key;
+                }
+            });
+
+            // Suppress Enter on keypress and keyup as well — some browsers
+            // process form submission on these events, not keydown.
+            $(document).on('keypress keyup', function(e) {
+                if (suppressNextEnter && e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    if (e.type === 'keyup') {
+                        suppressNextEnter = false;
+                    }
+                    return false;
                 }
             });
         },
@@ -121,9 +142,16 @@
                 success: function(data) {
                     if (data.found) {
                         self.showResult('Found: ' + data.asset.asset_tag + ' — ' + data.asset.name, 'success');
-
-                        // Optional: play a beep sound.
                         self.beep(800, 150);
+
+                        // If we're already editing this asset, stay on the page.
+                        var params = new URLSearchParams(window.location.search);
+                        var currentId = params.get('id');
+                        var isEditPage = params.get('action') === 'edit' && params.get('page') === 'hugo-inventory-assets';
+                        if (isEditPage && currentId && parseInt(currentId, 10) === data.asset.id) {
+                            // Already viewing this asset — do nothing.
+                            return;
+                        }
 
                         // Navigate to asset edit page after a brief flash.
                         setTimeout(function() {
@@ -171,6 +199,137 @@
     // Boot the scanner listener when DOM is ready.
     $(document).ready(function() {
         Scanner.init();
+
+        // ── Dashboard: Scan panel toggle ───────────────────────
+        $('#hugo-inv-scan-btn').on('click', function() {
+            var $panel = $('#hugo-inv-scan-panel');
+            $panel.slideToggle(200, function() {
+                if ($panel.is(':visible')) {
+                    $('#hugo-inv-manual-scan').focus();
+                }
+            });
+        });
+
+        // ── Dashboard: Manual scan lookup ──────────────────────
+        $('#hugo-inv-manual-scan-go').on('click', function() {
+            var val = $.trim($('#hugo-inv-manual-scan').val());
+            if (val.length >= Scanner.minLength) {
+                Scanner.processBarcode(val);
+                showScanResultInline(val);
+            }
+        });
+        $('#hugo-inv-manual-scan').on('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                $('#hugo-inv-manual-scan-go').trigger('click');
+            }
+        });
+
+        // Show scan result inside the dashboard panel (in addition to the top bar).
+        function showScanResultInline(barcode) {
+            var $panel = $('#hugo-inv-scan-result-panel');
+            $panel.html('<em>Looking up ' + $('<span>').text(barcode).html() + '…</em>').show();
+
+            $.ajax({
+                url: hugoInventory.restUrl + 'assets/lookup',
+                method: 'GET',
+                data: { barcode: barcode },
+                beforeSend: function(xhr) {
+                    xhr.setRequestHeader('X-WP-Nonce', hugoInventory.nonce);
+                },
+                success: function(data) {
+                    if (data.found) {
+                        var a = data.asset;
+                        var editUrl = hugoInventory.adminUrl + 'admin.php?page=hugo-inventory-assets&action=edit&id=' + a.id;
+                        $panel.html(
+                            '<div class="hugo-inv-scan-found">' +
+                            '<span class="dashicons dashicons-yes-alt" style="color:#46b450;font-size:20px;"></span>' +
+                            '<div><strong>' + $('<span>').text(a.name).html() + '</strong> ' +
+                            '<code>' + $('<span>').text(a.asset_tag).html() + '</code>' +
+                            (a.status ? ' <span class="hugo-inv-status hugo-inv-status-' + a.status + '">' + a.status.replace('_', ' ') + '</span>' : '') +
+                            '</div>' +
+                            '<a href="' + editUrl + '" class="button button-small">View / Edit</a>' +
+                            '</div>'
+                        );
+                    } else {
+                        $panel.html(
+                            '<div class="hugo-inv-scan-notfound">' +
+                            '<span class="dashicons dashicons-dismiss" style="color:#dc3232;font-size:20px;"></span>' +
+                            '<div>Not found: <strong>' + $('<span>').text(data.scanned_value).html() + '</strong></div>' +
+                            '<a href="' + data.create_url + '" class="button button-small button-primary">Create Asset</a>' +
+                            '</div>'
+                        );
+                    }
+                },
+                error: function() {
+                    $panel.html('<div class="hugo-inv-scan-notfound"><span class="dashicons dashicons-warning"></span> Lookup failed — check connection.</div>');
+                }
+            });
+        }
+
+        // ── Dashboard: Table search filter ─────────────────────
+        $('#hugo-inv-table-search').on('keyup', function() {
+            filterDashboardTable();
+        });
+
+        // ── Dashboard: Status filter ───────────────────────────
+        $('#hugo-inv-status-filter').on('change', function() {
+            filterDashboardTable();
+        });
+
+        function filterDashboardTable() {
+            var search = $.trim($('#hugo-inv-table-search').val()).toLowerCase();
+            var status = $('#hugo-inv-status-filter').val();
+
+            $('#hugo-inv-asset-table tbody tr').each(function() {
+                var $row   = $(this);
+                var rowSearch = ($row.data('search') || '').toString();
+                var rowStatus = ($row.data('status') || '').toString();
+
+                var matchSearch = !search || rowSearch.indexOf(search) !== -1;
+                var matchStatus = !status || rowStatus === status;
+
+                $row.toggle(matchSearch && matchStatus);
+            });
+        }
+
+        // ── Dashboard: Select all checkbox ─────────────────────
+        $('#hugo-inv-select-all').on('change', function() {
+            var checked = $(this).prop('checked');
+            $('#hugo-inv-asset-table tbody tr:visible .hugo-inv-row-cb').prop('checked', checked);
+            updatePrintSelectedBtn();
+        });
+
+        $(document).on('change', '.hugo-inv-row-cb', function() {
+            updatePrintSelectedBtn();
+            // Uncheck "select all" if any row unchecked.
+            if (!$(this).prop('checked')) {
+                $('#hugo-inv-select-all').prop('checked', false);
+            }
+        });
+
+        function updatePrintSelectedBtn() {
+            var count = $('.hugo-inv-row-cb:checked').length;
+            $('#hugo-inv-print-selected').prop('disabled', count === 0);
+            if (count > 0) {
+                $('#hugo-inv-print-selected').text('Print Selected (' + count + ')');
+            } else {
+                $('#hugo-inv-print-selected').html('<span class="dashicons dashicons-printer" style="vertical-align:text-top;margin-right:2px;"></span> Print Selected');
+            }
+        }
+
+        // ── Dashboard: Print selected labels ───────────────────
+        $('#hugo-inv-print-selected').on('click', function() {
+            var ids = [];
+            $('.hugo-inv-row-cb:checked').each(function() {
+                ids.push($(this).val());
+            });
+            if (ids.length === 0) return;
+
+            var nonce = hugoInventory.printNonce || '';
+            var url = hugoInventory.ajaxUrl + '?action=hugo_inv_print_labels&ids=' + ids.join(',') + '&_wpnonce=' + nonce;
+            window.open(url, '_blank');
+        });
     });
 
 })(jQuery);

@@ -204,7 +204,22 @@ class Label_Printer {
 
 <div class="controls">
     <button onclick="window.print()"><?php esc_html_e( 'Print Labels', 'hugo-inventory' ); ?></button>
-    <span class="info"><?php echo esc_html( sprintf( __( '%d label(s) — %d per row', 'hugo-inventory' ), count( $assets ), $cols ) ); ?></span>
+
+    <label for="code-type-select" style="margin-left:8px;"><?php esc_html_e( 'Label Type:', 'hugo-inventory' ); ?></label>
+    <select id="code-type-select" onchange="switchCodeType(this.value)" style="padding:4px 8px;border-radius:3px;border:1px solid #555;background:#fff;color:#000;font-size:13px;">
+        <option value="qr"<?php selected( $code_type, 'qr' ); ?>><?php esc_html_e( 'QR Code', 'hugo-inventory' ); ?></option>
+        <option value="barcode"<?php selected( $code_type, 'barcode' ); ?>><?php esc_html_e( 'Barcode', 'hugo-inventory' ); ?></option>
+        <option value="both"<?php selected( $code_type, 'both' ); ?>><?php esc_html_e( 'Both', 'hugo-inventory' ); ?></option>
+    </select>
+
+    <label for="cols-select" style="margin-left:8px;"><?php esc_html_e( 'Per Row:', 'hugo-inventory' ); ?></label>
+    <select id="cols-select" onchange="switchCodeType(document.getElementById('code-type-select').value)" style="padding:4px 8px;border-radius:3px;border:1px solid #555;background:#fff;color:#000;font-size:13px;">
+        <?php for ( $c = 1; $c <= 6; $c++ ) : ?>
+            <option value="<?php echo $c; ?>"<?php selected( $cols, $c ); ?>><?php echo $c; ?></option>
+        <?php endfor; ?>
+    </select>
+
+    <span class="info"><?php echo esc_html( sprintf( __( '%d label(s)', 'hugo-inventory' ), count( $assets ) ) ); ?></span>
     <button onclick="window.close()" style="background:#666;"><?php esc_html_e( 'Close', 'hugo-inventory' ); ?></button>
 </div>
 
@@ -215,10 +230,12 @@ class Label_Printer {
 </div>
 
 <script>
-// Auto-open print dialog after a short delay to let images render
-window.addEventListener('load', function() {
-    setTimeout(function() { window.print(); }, 500);
-});
+function switchCodeType(codeType) {
+    var url = new URL(window.location.href);
+    url.searchParams.set('code_type', codeType);
+    url.searchParams.set('cols', document.getElementById('cols-select').value);
+    window.location.href = url.toString();
+}
 </script>
 </body>
 </html>

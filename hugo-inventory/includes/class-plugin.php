@@ -36,6 +36,9 @@ final class Plugin {
             new Admin\Admin();
         }
 
+        // Frontend shortcodes (always loaded — Oxygen renders outside is_admin).
+        new Shortcodes();
+
         // REST API
         add_action( 'rest_api_init', [ $this, 'register_rest_routes' ] );
     }

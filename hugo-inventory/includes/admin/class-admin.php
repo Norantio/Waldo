@@ -117,38 +117,42 @@ class Admin {
             'adminUrl'         => admin_url(),
             'restUrl'          => rest_url( 'hugo-inventory/v1/' ),
             'nonce'            => wp_create_nonce( 'wp_rest' ),
+            'printNonce'       => wp_create_nonce( 'hugo_inv_print_labels' ),
             'scannerThreshold' => get_option( 'hugo_inventory_settings', [] )['scanner_threshold'] ?? 50,
         ] );
     }
 
     /**
-     * Dashboard page — overview of inventory status.
+     * Dashboard page — all-in-one inventory command center.
      */
     public function render_dashboard_page(): void {
         $org_id = isset( $_GET['organization_id'] ) ? absint( $_GET['organization_id'] ) : null;
 
         // Fetch data server-side for initial render.
-        $by_status    = \Hugo_Inventory\Models\Asset::count_by_status( $org_id );
-        $total        = array_sum( $by_status );
-        $org_options  = \Hugo_Inventory\Models\Organization::dropdown_options();
+        $by_status   = \Hugo_Inventory\Models\Asset::count_by_status( $org_id );
+        $total       = array_sum( $by_status );
+        $org_options = \Hugo_Inventory\Models\Organization::dropdown_options();
+        $cat_options = \Hugo_Inventory\Models\Category::dropdown_options();
+        $loc_options = \Hugo_Inventory\Models\Location::dropdown_options();
+        $status_opts = \Hugo_Inventory\Models\Asset::status_options();
 
-        // Recent assets.
-        $recent_args = [
+        // All assets for the table.
+        $list_args = [
             'orderby'  => 'created_at',
             'order'    => 'DESC',
-            'per_page' => 10,
+            'per_page' => 200,
             'page'     => 1,
         ];
         if ( $org_id ) {
-            $recent_args['organization_id'] = $org_id;
+            $list_args['organization_id'] = $org_id;
         }
-        $recent = \Hugo_Inventory\Models\Asset::list( $recent_args );
+        $all_assets = \Hugo_Inventory\Models\Asset::list( $list_args );
 
         // Warranty alerts (next 30 days).
         global $wpdb;
         $t_assets = $wpdb->prefix . 'inventory_assets';
         $t_orgs   = $wpdb->prefix . 'inventory_organizations';
-        $warranty_where = 'WHERE a.warranty_expiration IS NOT NULL AND a.warranty_expiration <> ""'
+        $warranty_where  = 'WHERE a.warranty_expiration IS NOT NULL AND a.warranty_expiration <> ""'
             . ' AND a.warranty_expiration <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)'
             . ' AND a.warranty_expiration >= CURDATE()'
             . ' AND a.status NOT IN ("retired","lost")';
@@ -158,31 +162,13 @@ class Admin {
             $warranty_params[] = $org_id;
         }
         $warranty_sql = "SELECT a.id, a.asset_tag, a.name, a.warranty_expiration, o.name AS organization_name
-                         FROM {$t_assets} a
-                         LEFT JOIN {$t_orgs} o ON a.organization_id = o.id
-                         {$warranty_where}
-                         ORDER BY a.warranty_expiration ASC LIMIT 10";
+                         FROM {$t_assets} a LEFT JOIN {$t_orgs} o ON a.organization_id = o.id
+                         {$warranty_where} ORDER BY a.warranty_expiration ASC LIMIT 10";
         if ( $warranty_params ) {
             $warranty_sql = $wpdb->prepare( $warranty_sql, ...$warranty_params );
         }
         $warranty_alerts = $wpdb->get_results( $warranty_sql );
 
-        // By organization counts.
-        $org_where  = '';
-        $org_params = [];
-        if ( $org_id ) {
-            $org_where  = 'WHERE a.organization_id = %d';
-            $org_params = [ $org_id ];
-        }
-        $org_sql = "SELECT o.name, COUNT(*) AS cnt
-                    FROM {$t_assets} a JOIN {$t_orgs} o ON a.organization_id = o.id
-                    {$org_where} GROUP BY a.organization_id ORDER BY cnt DESC LIMIT 10";
-        if ( $org_params ) {
-            $org_sql = $wpdb->prepare( $org_sql, ...$org_params );
-        }
-        $by_org = $wpdb->get_results( $org_sql );
-
-        // Status label colors.
         $status_colors = [
             'available'   => '#46b450',
             'checked_out' => '#0073aa',
@@ -191,142 +177,181 @@ class Admin {
             'lost'        => '#dc3232',
         ];
 
-        echo '<div class="wrap">';
+        $edit_base   = admin_url( 'admin.php?page=hugo-inventory-assets&action=edit&id=' );
+        $add_url     = admin_url( 'admin.php?page=hugo-inventory-assets&action=add' );
+        $print_nonce = wp_create_nonce( 'hugo_inv_print_labels' );
+
+        // WP users for assignment dropdown.
+        $wp_users = get_users( [ 'fields' => [ 'ID', 'display_name' ], 'orderby' => 'display_name' ] );
+
+        echo '<div class="wrap hugo-inv-dashboard-wrap">';
         echo '<h1>' . esc_html__( 'Inventory Dashboard', 'hugo-inventory' ) . '</h1>';
 
-        // Organization filter.
+        // ── Top bar: Org filter + Actions ──
         ?>
-        <form method="get" style="margin:12px 0 20px;">
-            <input type="hidden" name="page" value="hugo-inventory">
-            <label for="organization_id"><strong><?php esc_html_e( 'Filter by Organization:', 'hugo-inventory' ); ?></strong></label>
-            <select name="organization_id" id="organization_id" onchange="this.form.submit()">
-                <option value=""><?php esc_html_e( 'All Organizations', 'hugo-inventory' ); ?></option>
-                <?php foreach ( $org_options as $oid => $oname ) : ?>
-                    <option value="<?php echo esc_attr( $oid ); ?>" <?php selected( $org_id, $oid ); ?>>
-                        <?php echo esc_html( $oname ); ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </form>
+        <div class="hugo-inv-topbar">
+            <form method="get" class="hugo-inv-topbar-filter">
+                <input type="hidden" name="page" value="hugo-inventory">
+                <label for="organization_id"><strong><?php esc_html_e( 'Organization:', 'hugo-inventory' ); ?></strong></label>
+                <select name="organization_id" id="organization_id" onchange="this.form.submit()">
+                    <option value=""><?php esc_html_e( 'All', 'hugo-inventory' ); ?></option>
+                    <?php foreach ( $org_options as $oid => $oname ) : ?>
+                        <option value="<?php echo esc_attr( $oid ); ?>" <?php selected( $org_id, $oid ); ?>><?php echo esc_html( $oname ); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </form>
+            <div class="hugo-inv-topbar-actions">
+                <a href="<?php echo esc_url( $add_url ); ?>" class="button button-primary"><span class="dashicons dashicons-plus-alt2" style="vertical-align:text-top;margin-right:2px;"></span> <?php esc_html_e( 'Add Asset', 'hugo-inventory' ); ?></a>
+                <button type="button" class="button" id="hugo-inv-scan-btn"><span class="dashicons dashicons-camera" style="vertical-align:text-top;margin-right:2px;"></span> <?php esc_html_e( 'Scan', 'hugo-inventory' ); ?></button>
+                <button type="button" class="button" id="hugo-inv-print-selected" disabled><span class="dashicons dashicons-printer" style="vertical-align:text-top;margin-right:2px;"></span> <?php esc_html_e( 'Print Selected', 'hugo-inventory' ); ?></button>
+            </div>
+        </div>
+        <?php
+
+        // ── Scan panel (hidden by default, toggled by Scan button) ──
+        ?>
+        <div id="hugo-inv-scan-panel" class="postbox" style="display:none;margin-bottom:16px;">
+            <div class="inside" style="padding:16px;">
+                <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+                    <div id="hugo-inv-scan-status" style="display:flex;align-items:center;gap:8px;">
+                        <span class="hugo-inv-scan-dot"></span>
+                        <strong><?php esc_html_e( 'Ready to Scan', 'hugo-inventory' ); ?></strong>
+                        <span style="color:#666;font-size:13px;"><?php esc_html_e( '— Point scanner at barcode or type below', 'hugo-inventory' ); ?></span>
+                    </div>
+                    <div style="flex:1;min-width:200px;">
+                        <input type="text" id="hugo-inv-manual-scan" class="regular-text hugo-inv-scan-field" placeholder="<?php esc_attr_e( 'Type or paste barcode/asset tag…', 'hugo-inventory' ); ?>" autocomplete="off">
+                    </div>
+                    <button type="button" class="button button-primary" id="hugo-inv-manual-scan-go"><?php esc_html_e( 'Look Up', 'hugo-inventory' ); ?></button>
+                </div>
+                <div id="hugo-inv-scan-result-panel" style="margin-top:12px;display:none;"></div>
+            </div>
+        </div>
         <?php
 
         // ── Status Cards ──
-        echo '<div class="hugo-inv-dashboard-cards" style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:24px;">';
-        // Total card.
-        echo '<div style="background:#fff;border:1px solid #ccd0d4;border-left:4px solid #23282d;padding:16px 20px;min-width:140px;">';
-        echo '<div style="font-size:28px;font-weight:600;">' . esc_html( number_format_i18n( $total ) ) . '</div>';
-        echo '<div style="color:#666;">' . esc_html__( 'Total Assets', 'hugo-inventory' ) . '</div>';
+        echo '<div class="hugo-inv-dashboard-cards">';
+        echo '<div class="hugo-inv-stat-card" style="border-left-color:#23282d;">';
+        echo '<div class="hugo-inv-stat-number">' . esc_html( number_format_i18n( $total ) ) . '</div>';
+        echo '<div class="hugo-inv-stat-label">' . esc_html__( 'Total', 'hugo-inventory' ) . '</div>';
         echo '</div>';
-
         foreach ( $by_status as $status => $count ) {
             $color = $status_colors[ $status ] ?? '#666';
             $label = ucwords( str_replace( '_', ' ', $status ) );
-            echo '<div style="background:#fff;border:1px solid #ccd0d4;border-left:4px solid ' . esc_attr( $color ) . ';padding:16px 20px;min-width:140px;">';
-            echo '<div style="font-size:28px;font-weight:600;">' . esc_html( number_format_i18n( $count ) ) . '</div>';
-            echo '<div style="color:#666;">' . esc_html( $label ) . '</div>';
+            echo '<div class="hugo-inv-stat-card" style="border-left-color:' . esc_attr( $color ) . ';">';
+            echo '<div class="hugo-inv-stat-number">' . esc_html( number_format_i18n( $count ) ) . '</div>';
+            echo '<div class="hugo-inv-stat-label">' . esc_html( $label ) . '</div>';
             echo '</div>';
         }
         echo '</div>';
 
-        // ── Two-column layout ──
-        echo '<div style="display:flex;gap:24px;flex-wrap:wrap;">';
+        // ── Main content: Asset table + sidebar ──
+        ?>
+        <div class="hugo-inv-main-layout">
+            <!-- Asset table -->
+            <div class="hugo-inv-main-content">
+                <div class="postbox">
+                    <div class="hugo-inv-table-header">
+                        <h2 class="hndle" style="margin:0;"><?php esc_html_e( 'All Assets', 'hugo-inventory' ); ?>
+                            <span style="font-weight:normal;color:#666;font-size:13px;margin-left:8px;">(<?php echo esc_html( number_format_i18n( $all_assets['total'] ?? 0 ) ); ?>)</span>
+                        </h2>
+                        <div class="hugo-inv-table-filters">
+                            <input type="text" id="hugo-inv-table-search" placeholder="<?php esc_attr_e( 'Filter…', 'hugo-inventory' ); ?>" class="hugo-inv-filter-input">
+                            <select id="hugo-inv-status-filter" class="hugo-inv-filter-select">
+                                <option value=""><?php esc_html_e( 'All Statuses', 'hugo-inventory' ); ?></option>
+                                <?php foreach ( $status_opts as $sk => $sl ) : ?>
+                                    <option value="<?php echo esc_attr( $sk ); ?>"><?php echo esc_html( $sl ); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="inside" style="padding:0;overflow-x:auto;">
+                        <table class="widefat striped hugo-inv-asset-table" id="hugo-inv-asset-table">
+                            <thead>
+                                <tr>
+                                    <th class="check-column"><input type="checkbox" id="hugo-inv-select-all"></th>
+                                    <th><?php esc_html_e( 'Asset Tag', 'hugo-inventory' ); ?></th>
+                                    <th><?php esc_html_e( 'Name', 'hugo-inventory' ); ?></th>
+                                    <th><?php esc_html_e( 'Organization', 'hugo-inventory' ); ?></th>
+                                    <th><?php esc_html_e( 'Location', 'hugo-inventory' ); ?></th>
+                                    <th><?php esc_html_e( 'Assigned To', 'hugo-inventory' ); ?></th>
+                                    <th><?php esc_html_e( 'Status', 'hugo-inventory' ); ?></th>
+                                    <th><?php esc_html_e( 'Actions', 'hugo-inventory' ); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            <?php if ( ! empty( $all_assets['items'] ) ) : ?>
+                                <?php foreach ( $all_assets['items'] as $item ) :
+                                    $sc         = $status_colors[ $item->status ] ?? '#666';
+                                    $status_lbl = ucwords( str_replace( '_', ' ', $item->status ) );
+                                    $edit_url   = $edit_base . $item->id;
+                                    $p_url      = admin_url( 'admin-ajax.php?action=hugo_inv_print_labels&ids=' . $item->id . '&_wpnonce=' . $print_nonce );
+                                ?>
+                                <tr data-id="<?php echo esc_attr( $item->id ); ?>"
+                                    data-status="<?php echo esc_attr( $item->status ); ?>"
+                                    data-search="<?php echo esc_attr( strtolower( $item->asset_tag . ' ' . $item->name . ' ' . ( $item->serial_number ?? '' ) . ' ' . ( $item->organization_name ?? '' ) . ' ' . ( $item->location_name ?? '' ) ) ); ?>">
+                                    <td><input type="checkbox" class="hugo-inv-row-cb" value="<?php echo esc_attr( $item->id ); ?>"></td>
+                                    <td><a href="<?php echo esc_url( $edit_url ); ?>"><code><?php echo esc_html( $item->asset_tag ); ?></code></a></td>
+                                    <td><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $item->name ); ?></a></td>
+                                    <td><?php echo esc_html( $item->organization_name ?? '—' ); ?></td>
+                                    <td><?php echo esc_html( $item->location_name ?? '—' ); ?></td>
+                                    <td><?php echo esc_html( $item->assigned_user_display ?? '—' ); ?></td>
+                                    <td><span class="hugo-inv-status hugo-inv-status-<?php echo esc_attr( $item->status ); ?>"><?php echo esc_html( $status_lbl ); ?></span></td>
+                                    <td class="hugo-inv-actions-cell">
+                                        <a href="<?php echo esc_url( $edit_url ); ?>" title="<?php esc_attr_e( 'Edit', 'hugo-inventory' ); ?>"><span class="dashicons dashicons-edit"></span></a>
+                                        <a href="<?php echo esc_url( $p_url ); ?>" target="_blank" title="<?php esc_attr_e( 'Print Label', 'hugo-inventory' ); ?>"><span class="dashicons dashicons-printer"></span></a>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            <?php else : ?>
+                                <tr><td colspan="8" style="text-align:center;padding:24px;"><?php esc_html_e( 'No assets found. Add your first asset!', 'hugo-inventory' ); ?></td></tr>
+                            <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
 
-        // Left column: Recently Added + Warranty Alerts.
-        echo '<div style="flex:1;min-width:400px;">';
+            <!-- Sidebar -->
+            <div class="hugo-inv-sidebar">
+                <?php if ( ! empty( $warranty_alerts ) ) : ?>
+                <div class="postbox hugo-inv-sidebar-box">
+                    <h2 class="hndle"><span class="dashicons dashicons-warning" style="color:#ffb900;"></span> <?php esc_html_e( 'Warranty Alerts', 'hugo-inventory' ); ?></h2>
+                    <div class="inside" style="padding:0;">
+                        <ul class="hugo-inv-alert-list">
+                        <?php foreach ( $warranty_alerts as $wa ) :
+                            $days_left = max( 0, (int) ( ( strtotime( $wa->warranty_expiration ) - time() ) / DAY_IN_SECONDS ) );
+                            $urgency   = $days_left <= 7 ? '#dc3232' : ( $days_left <= 14 ? '#ffb900' : '#666' );
+                        ?>
+                            <li>
+                                <a href="<?php echo esc_url( $edit_base . $wa->id ); ?>">
+                                    <strong><?php echo esc_html( $wa->name ); ?></strong>
+                                    <code><?php echo esc_html( $wa->asset_tag ); ?></code>
+                                </a>
+                                <span style="color:<?php echo esc_attr( $urgency ); ?>;font-size:12px;">
+                                    <?php echo esc_html( sprintf( __( '%d days left', 'hugo-inventory' ), $days_left ) ); ?>
+                                </span>
+                            </li>
+                        <?php endforeach; ?>
+                        </ul>
+                    </div>
+                </div>
+                <?php endif; ?>
 
-        // Recently added.
-        echo '<div class="postbox" style="margin-bottom:16px;">';
-        echo '<h2 class="hndle" style="padding:8px 12px;margin:0;">' . esc_html__( 'Recently Added', 'hugo-inventory' ) . '</h2>';
-        echo '<div class="inside" style="padding:0;">';
-        if ( ! empty( $recent['items'] ) ) {
-            echo '<table class="widefat striped" style="border:0;">';
-            echo '<thead><tr>';
-            echo '<th>' . esc_html__( 'Asset Tag', 'hugo-inventory' ) . '</th>';
-            echo '<th>' . esc_html__( 'Name', 'hugo-inventory' ) . '</th>';
-            echo '<th>' . esc_html__( 'Organization', 'hugo-inventory' ) . '</th>';
-            echo '<th>' . esc_html__( 'Status', 'hugo-inventory' ) . '</th>';
-            echo '</tr></thead><tbody>';
-            foreach ( $recent['items'] as $item ) {
-                $edit_url = admin_url( 'admin.php?page=hugo-inventory-assets&action=edit&id=' . $item->id );
-                $sc = $status_colors[ $item->status ] ?? '#666';
-                echo '<tr>';
-                echo '<td><a href="' . esc_url( $edit_url ) . '"><code>' . esc_html( $item->asset_tag ) . '</code></a></td>';
-                echo '<td>' . esc_html( $item->name ) . '</td>';
-                echo '<td>' . esc_html( $item->organization_name ?? '—' ) . '</td>';
-                echo '<td><span style="background:' . esc_attr( $sc ) . ';color:#fff;padding:2px 8px;border-radius:3px;font-size:12px;">'
-                     . esc_html( ucwords( str_replace( '_', ' ', $item->status ) ) ) . '</span></td>';
-                echo '</tr>';
-            }
-            echo '</tbody></table>';
-        } else {
-            echo '<p style="padding:12px;">' . esc_html__( 'No assets found.', 'hugo-inventory' ) . '</p>';
-        }
-        echo '</div></div>';
-
-        // Warranty alerts.
-        echo '<div class="postbox">';
-        echo '<h2 class="hndle" style="padding:8px 12px;margin:0;">';
-        echo '<span class="dashicons dashicons-warning" style="color:#ffb900;margin-right:4px;"></span>';
-        echo esc_html__( 'Warranty Expiring (Next 30 Days)', 'hugo-inventory' );
-        echo '</h2>';
-        echo '<div class="inside" style="padding:0;">';
-        if ( ! empty( $warranty_alerts ) ) {
-            echo '<table class="widefat striped" style="border:0;">';
-            echo '<thead><tr>';
-            echo '<th>' . esc_html__( 'Asset Tag', 'hugo-inventory' ) . '</th>';
-            echo '<th>' . esc_html__( 'Name', 'hugo-inventory' ) . '</th>';
-            echo '<th>' . esc_html__( 'Expires', 'hugo-inventory' ) . '</th>';
-            echo '<th>' . esc_html__( 'Organization', 'hugo-inventory' ) . '</th>';
-            echo '</tr></thead><tbody>';
-            foreach ( $warranty_alerts as $wa ) {
-                $edit_url = admin_url( 'admin.php?page=hugo-inventory-assets&action=edit&id=' . $wa->id );
-                $days_left = (int) ( ( strtotime( $wa->warranty_expiration ) - time() ) / DAY_IN_SECONDS );
-                $urgency = $days_left <= 7 ? '#dc3232' : ( $days_left <= 14 ? '#ffb900' : '#666' );
-                echo '<tr>';
-                echo '<td><a href="' . esc_url( $edit_url ) . '"><code>' . esc_html( $wa->asset_tag ) . '</code></a></td>';
-                echo '<td>' . esc_html( $wa->name ) . '</td>';
-                echo '<td style="color:' . esc_attr( $urgency ) . ';font-weight:600;">' . esc_html( $wa->warranty_expiration )
-                     . ' <small>(' . esc_html( sprintf( __( '%d days', 'hugo-inventory' ), $days_left ) ) . ')</small></td>';
-                echo '<td>' . esc_html( $wa->organization_name ?? '—' ) . '</td>';
-                echo '</tr>';
-            }
-            echo '</tbody></table>';
-        } else {
-            echo '<p style="padding:12px;">' . esc_html__( 'No warranties expiring soon.', 'hugo-inventory' ) . '</p>';
-        }
-        echo '</div></div>';
-
-        echo '</div>'; // end left column
-
-        // Right column: Assets by Organization.
-        echo '<div style="flex:0 0 320px;min-width:280px;">';
-
-        echo '<div class="postbox">';
-        echo '<h2 class="hndle" style="padding:8px 12px;margin:0;">' . esc_html__( 'Assets by Organization', 'hugo-inventory' ) . '</h2>';
-        echo '<div class="inside" style="padding:0;">';
-        if ( ! empty( $by_org ) ) {
-            echo '<table class="widefat striped" style="border:0;">';
-            foreach ( $by_org as $row ) {
-                $pct = $total > 0 ? round( ( (int) $row->cnt / $total ) * 100 ) : 0;
-                echo '<tr>';
-                echo '<td style="padding:8px 12px;">' . esc_html( $row->name ) . '</td>';
-                echo '<td style="padding:8px 12px;text-align:right;font-weight:600;">' . esc_html( number_format_i18n( (int) $row->cnt ) ) . '</td>';
-                echo '<td style="padding:8px 12px;width:80px;">';
-                echo '<div style="background:#e5e5e5;border-radius:3px;overflow:hidden;height:14px;">';
-                echo '<div style="width:' . esc_attr( $pct ) . '%;background:#0073aa;height:100%;"></div>';
-                echo '</div>';
-                echo '</td>';
-                echo '</tr>';
-            }
-            echo '</table>';
-        } else {
-            echo '<p style="padding:12px;">' . esc_html__( 'No data.', 'hugo-inventory' ) . '</p>';
-        }
-        echo '</div></div>';
-
-        echo '</div>'; // end right column
-        echo '</div>'; // end two-column
-
+                <div class="postbox hugo-inv-sidebar-box">
+                    <h2 class="hndle"><?php esc_html_e( 'Quick Links', 'hugo-inventory' ); ?></h2>
+                    <div class="inside">
+                        <ul class="hugo-inv-quick-links">
+                            <li><a href="<?php echo esc_url( $add_url ); ?>"><span class="dashicons dashicons-plus-alt2"></span> <?php esc_html_e( 'Add New Asset', 'hugo-inventory' ); ?></a></li>
+                            <li><a href="<?php echo esc_url( admin_url( 'admin.php?page=hugo-inventory-organizations' ) ); ?>"><span class="dashicons dashicons-building"></span> <?php esc_html_e( 'Manage Organizations', 'hugo-inventory' ); ?></a></li>
+                            <li><a href="<?php echo esc_url( admin_url( 'admin.php?page=hugo-inventory-categories' ) ); ?>"><span class="dashicons dashicons-category"></span> <?php esc_html_e( 'Manage Categories', 'hugo-inventory' ); ?></a></li>
+                            <li><a href="<?php echo esc_url( admin_url( 'admin.php?page=hugo-inventory-locations' ) ); ?>"><span class="dashicons dashicons-location"></span> <?php esc_html_e( 'Manage Locations', 'hugo-inventory' ); ?></a></li>
+                            <li><a href="<?php echo esc_url( admin_url( 'admin.php?page=hugo-inventory-settings' ) ); ?>"><span class="dashicons dashicons-admin-generic"></span> <?php esc_html_e( 'Settings', 'hugo-inventory' ); ?></a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php
         echo '</div>'; // end wrap
     }
 
@@ -883,6 +908,7 @@ class Admin {
                 'description'         => sanitize_textarea_field( wp_unslash( $_POST['description'] ?? '' ) ),
                 'serial_number'       => sanitize_text_field( wp_unslash( $_POST['serial_number'] ?? '' ) ),
                 'barcode_value'       => sanitize_text_field( wp_unslash( $_POST['barcode_value'] ?? '' ) ),
+                'asset_tag'          => sanitize_text_field( wp_unslash( $_POST['asset_tag'] ?? '' ) ),
                 'category_id'        => ! empty( $_POST['category_id'] ) ? absint( $_POST['category_id'] ) : null,
                 'location_id'        => ! empty( $_POST['location_id'] ) ? absint( $_POST['location_id'] ) : null,
                 'assigned_user_id'   => ! empty( $_POST['assigned_user_id'] ) ? absint( $_POST['assigned_user_id'] ) : null,
@@ -938,12 +964,14 @@ class Admin {
         echo '<h1>' . esc_html( $title ) . '</h1>';
 
         if ( isset( $_GET['error'] ) ) {
-            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html( urldecode( $_GET['error'] ) ) . '</p></div>';
+            $error_msg = urldecode( $_GET['error'] );
+            echo '<div class="notice notice-error is-dismissible"><p>' . esc_html( $error_msg ) . '</p></div>';
+            echo '<script>console.error("Hugo Inventory asset error:", ' . wp_json_encode( $error_msg ) . ');</script>';
         }
 
         $form_url = admin_url( 'admin.php?page=hugo-inventory-assets&action=' . ( $is_edit ? 'edit&id=' . $id : 'add' ) );
         ?>
-        <form method="post" action="<?php echo esc_url( $form_url ); ?>">
+        <form method="post" action="<?php echo esc_url( $form_url ); ?>" onkeydown="if(event.key==='Enter'&&event.target.tagName!=='TEXTAREA'&&event.target.type!=='submit'){event.preventDefault();return false;}">
             <?php wp_nonce_field( 'hugo_inv_save_asset', 'hugo_inv_asset_nonce' ); ?>
             <table class="form-table">
                 <tr>
@@ -982,9 +1010,9 @@ class Admin {
                 </tr>
                 <?php if ( $is_edit && ! empty( $asset->asset_tag ) ) : ?>
                 <tr>
-                    <th scope="row"><?php esc_html_e( 'Asset Tag', 'hugo-inventory' ); ?></th>
+                    <th scope="row"><label for="asset_tag"><?php esc_html_e( 'Asset Tag', 'hugo-inventory' ); ?></label></th>
                     <td>
-                        <code><?php echo esc_html( $asset->asset_tag ); ?></code>
+                        <input type="text" id="asset_tag" name="asset_tag" class="regular-text" value="<?php echo esc_attr( $asset->asset_tag ); ?>">
                         <?php
                         $print_url = wp_nonce_url(
                             admin_url( 'admin-ajax.php?action=hugo_inv_print_labels&ids=' . $id ),
@@ -996,6 +1024,16 @@ class Admin {
                         </a>
                     </td>
                 </tr>
+                <?php else : ?>
+                <tr>
+                    <th scope="row"><label for="asset_tag"><?php esc_html_e( 'Asset Tag', 'hugo-inventory' ); ?></label></th>
+                    <td>
+                        <input type="text" id="asset_tag" name="asset_tag" class="regular-text" value="">
+                        <p class="description"><?php esc_html_e( 'Leave blank to auto-generate.', 'hugo-inventory' ); ?></p>
+                    </td>
+                </tr>
+                <?php endif; ?>
+                <?php if ( $is_edit && ! empty( $asset->asset_tag ) ) : ?>
                 <tr>
                     <th scope="row"><?php esc_html_e( 'QR Code', 'hugo-inventory' ); ?></th>
                     <td><?php echo \Hugo_Inventory\Barcode::qr_svg( \Hugo_Inventory\Barcode::build_qr_payload( $asset ), 3 ); // phpcs:ignore ?></td>

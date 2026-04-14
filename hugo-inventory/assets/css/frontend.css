@@ -1,0 +1,315 @@
+/* Hugo Inventory — Frontend Styles */
+
+/* ── Base reset for all shortcodes ──────── */
+.hugo-inv-fe {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    color: #1e1e1e;
+    box-sizing: border-box;
+}
+.hugo-inv-fe *, .hugo-inv-fe *::before, .hugo-inv-fe *::after {
+    box-sizing: inherit;
+}
+
+/* ── Inputs & buttons ───────────────────── */
+.hugo-inv-fe-input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #ccd0d4;
+    border-radius: 6px;
+    font-size: 15px;
+    background: #fff;
+    transition: border-color 0.2s;
+}
+.hugo-inv-fe-input:focus {
+    outline: none;
+    border-color: #0073aa;
+    box-shadow: 0 0 0 2px rgba(0,115,170,0.15);
+}
+.hugo-inv-fe-select {
+    padding: 10px 14px;
+    border: 1px solid #ccd0d4;
+    border-radius: 6px;
+    font-size: 15px;
+    background: #fff;
+    min-width: 160px;
+}
+.hugo-inv-fe-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    background: #f0f0f1;
+    color: #1e1e1e;
+}
+.hugo-inv-fe-btn:hover { background: #e0e0e1; }
+.hugo-inv-fe-btn:active { transform: scale(0.98); }
+.hugo-inv-fe-btn-primary {
+    background: #0073aa;
+    color: #fff;
+}
+.hugo-inv-fe-btn-primary:hover { background: #005a87; }
+.hugo-inv-fe-btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ── Lookup shortcode ───────────────────── */
+.hugo-inv-fe-lookup-bar {
+    display: flex;
+    gap: 8px;
+}
+.hugo-inv-fe-lookup-input {
+    flex: 1;
+}
+.hugo-inv-fe-lookup-result {
+    margin-top: 16px;
+    padding: 16px;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
+    background: #fafafa;
+}
+.hugo-inv-fe-lookup-result.found {
+    border-left: 4px solid #46b450;
+    background: #f0faf1;
+}
+.hugo-inv-fe-lookup-result.not-found {
+    border-left: 4px solid #dc3232;
+    background: #fef1f1;
+}
+.hugo-inv-fe-lookup-result .hugo-inv-fe-result-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.hugo-inv-fe-lookup-result .hugo-inv-fe-result-header h4 {
+    margin: 0;
+    font-size: 18px;
+}
+.hugo-inv-fe-lookup-detail {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 24px;
+}
+.hugo-inv-fe-lookup-detail dt {
+    font-weight: 600;
+    color: #555;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.hugo-inv-fe-lookup-detail dd {
+    margin: 0 0 8px 0;
+    font-size: 14px;
+}
+
+/* ── Status badge ───────────────────────── */
+.hugo-inv-fe-status {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    line-height: 1.4;
+    text-transform: capitalize;
+}
+
+/* ── Table ──────────────────────────────── */
+.hugo-inv-fe-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.hugo-inv-fe-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+.hugo-inv-fe-table th {
+    text-align: left;
+    padding: 12px 14px;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #555;
+    background: #f8f9fa;
+    border-bottom: 2px solid #e0e0e0;
+}
+.hugo-inv-fe-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #f0f0f1;
+    vertical-align: middle;
+}
+.hugo-inv-fe-table tbody tr:hover {
+    background: #f9f9fb;
+}
+.hugo-inv-fe-table code {
+    font-size: 12px;
+    padding: 2px 6px;
+    background: #f0f0f1;
+    border-radius: 3px;
+}
+.hugo-inv-fe-empty {
+    text-align: center;
+    padding: 32px 14px !important;
+    color: #888;
+}
+
+/* ── Filters ────────────────────────────── */
+.hugo-inv-fe-filters {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+.hugo-inv-fe-assets-search {
+    flex: 1;
+    min-width: 200px;
+}
+
+/* ── Stat cards ─────────────────────────── */
+.hugo-inv-fe-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+}
+.hugo-inv-fe-stat-card {
+    flex: 1 1 130px;
+    min-width: 130px;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-left: 4px solid #23282d;
+    border-radius: 8px;
+    padding: 20px 24px;
+    text-align: center;
+}
+.hugo-inv-fe-stat-number {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1.1;
+    color: #1e1e1e;
+}
+.hugo-inv-fe-stat-label {
+    font-size: 12px;
+    color: #666;
+    margin-top: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* ── Checkout / Check-in tabs ───────────── */
+.hugo-inv-fe-checkout-tabs {
+    display: flex;
+    border-bottom: 2px solid #e0e0e0;
+    margin-bottom: 24px;
+}
+.hugo-inv-fe-tab {
+    padding: 12px 24px;
+    border: none;
+    background: none;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    color: #666;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.2s, border-color 0.2s;
+}
+.hugo-inv-fe-tab:hover { color: #1e1e1e; }
+.hugo-inv-fe-tab.active {
+    color: #0073aa;
+    border-bottom-color: #0073aa;
+}
+.hugo-inv-fe-tab-content {
+    display: none;
+}
+.hugo-inv-fe-tab-content.active {
+    display: block;
+}
+
+/* ── Form fields ────────────────────────── */
+.hugo-inv-fe-field {
+    margin-bottom: 18px;
+}
+.hugo-inv-fe-field label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+    font-size: 14px;
+    color: #333;
+}
+.hugo-inv-fe-asset-preview {
+    margin-top: 8px;
+    padding: 12px;
+    background: #f0faf1;
+    border: 1px solid #c3e6cb;
+    border-radius: 6px;
+    font-size: 14px;
+}
+.hugo-inv-fe-asset-preview.error {
+    background: #fef1f1;
+    border-color: #f5c6cb;
+}
+
+/* ── Messages ───────────────────────────── */
+.hugo-inv-fe-message {
+    margin-top: 16px;
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+}
+.hugo-inv-fe-message.success {
+    background: #f0faf1;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+}
+.hugo-inv-fe-message.error {
+    background: #fef1f1;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+}
+
+/* ── Notice (login required) ────────────── */
+.hugo-inv-fe-notice {
+    padding: 14px 20px;
+    background: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 6px;
+    color: #856404;
+}
+
+/* ── My Assets heading ──────────────────── */
+.hugo-inv-fe-heading {
+    margin: 0 0 16px;
+    font-size: 20px;
+    font-weight: 600;
+}
+.hugo-inv-fe-empty-text {
+    color: #888;
+    font-style: italic;
+}
+
+/* ── Responsive ─────────────────────────── */
+@media screen and (max-width: 600px) {
+    .hugo-inv-fe-lookup-bar {
+        flex-direction: column;
+    }
+    .hugo-inv-fe-stats {
+        flex-direction: column;
+    }
+    .hugo-inv-fe-lookup-detail {
+        grid-template-columns: 1fr;
+    }
+    .hugo-inv-fe-filters {
+        flex-direction: column;
+    }
+}

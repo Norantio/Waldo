@@ -189,16 +189,22 @@ class Assets_Controller {
             return new \WP_REST_Response( [
                 'found' => true,
                 'asset' => [
-                    'id'              => (int) $hydrated->id,
-                    'asset_tag'       => $hydrated->asset_tag,
-                    'name'            => $hydrated->name,
-                    'organization'    => $hydrated->organization_name ?? '',
-                    'status'          => $hydrated->status,
-                    'assigned_user'   => $hydrated->assigned_user_id
-                        ? ( get_userdata( (int) $hydrated->assigned_user_id )->display_name ?? null )
-                        : null,
-                    'location'        => $hydrated->location_name ?? '',
-                    'serial_number'   => $hydrated->serial_number,
+                    'id'                   => (int) $hydrated->id,
+                    'asset_tag'            => $hydrated->asset_tag,
+                    'name'                 => $hydrated->name,
+                    'organization_name'    => $hydrated->organization_name ?? '',
+                    'category_name'        => $hydrated->category_name ?? '',
+                    'location_name'        => $hydrated->location_name ?? '',
+                    'type_name'            => $hydrated->type_name ?? '',
+                    'status'               => $hydrated->status,
+                    'serial_number'        => $hydrated->serial_number ?? '',
+                    'assigned_user_display' => $hydrated->assigned_user_id
+                        ? ( get_userdata( (int) $hydrated->assigned_user_id )->display_name ?? '' )
+                        : '',
+                    'purchase_date'        => $hydrated->purchase_date ?? '',
+                    'purchase_cost'        => $hydrated->purchase_cost ?? '',
+                    'warranty_expiration'  => $hydrated->warranty_expiration ?? '',
+                    'description'          => $hydrated->description ?? '',
                 ],
             ], 200 );
         }
