@@ -26,6 +26,12 @@ define( 'HUGO_INV_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'HUGO_INV_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'HUGO_INV_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 
+// Composer autoloader (QR code, barcode libraries)
+$vendor_autoload = HUGO_INV_PLUGIN_DIR . 'vendor/autoload.php';
+if ( file_exists( $vendor_autoload ) ) {
+    require_once $vendor_autoload;
+}
+
 // Autoloader
 spl_autoload_register( function ( string $class ): void {
     $prefix = 'Hugo_Inventory\\';

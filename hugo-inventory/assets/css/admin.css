@@ -1,7 +1,57 @@
 /* Hugo Inventory Admin Styles */
+
+/* ── Layout ─────────────────────────────── */
 .wrap .wp-heading-inline {
     display: inline-block;
 }
 .wrap .page-title-action {
     margin-left: 8px;
+}
+
+/* ── Status badges ──────────────────────── */
+.hugo-inv-status {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #fff;
+    line-height: 1.5;
+}
+.hugo-inv-status-available   { background: #46b450; }
+.hugo-inv-status-checked_out { background: #0073aa; }
+.hugo-inv-status-in_repair   { background: #ffb900; color: #23282d; }
+.hugo-inv-status-retired     { background: #826eb4; }
+.hugo-inv-status-lost        { background: #dc3232; }
+
+/* ── Dashboard cards ────────────────────── */
+.hugo-inv-dashboard-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+/* ── Required field asterisk ────────────── */
+.form-table .required {
+    color: #dc3232;
+    font-weight: bold;
+}
+
+/* ── Scan indicator ─────────────────────── */
+#hugo-inv-scan-result {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ── Label print overrides (admin preview) ── */
+.hugo-inv-label-qr svg {
+    max-width: 120px;
+    height: auto;
+}
+
+/* ── Responsive ─────────────────────────── */
+@media screen and (max-width: 782px) {
+    .hugo-inv-dashboard-cards {
+        flex-direction: column;
+    }
 }

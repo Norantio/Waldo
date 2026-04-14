@@ -1,0 +1,7 @@
+# Composer
+hugo-inventory/vendor/
+hugo-inventory/composer.phar
+
+# OS
+.DS_Store
+Thumbs.db
