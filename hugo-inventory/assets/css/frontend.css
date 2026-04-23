@@ -2,8 +2,22 @@
 
 /* ── Base reset for all shortcodes ──────── */
 .hugo-inv-fe {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
-    font-size: 15px;
+    /* ═══ Customization variables ═══════════════════════════════════════
+       Override any of these from Oxygen's "Additional CSS", your theme,
+       or via shortcode attributes to restyle without touching plugin files.
+       ────────────────────────────────────────────────────────────────── */
+    --hugo-inv-primary:          #0073aa;   /* accent / primary button bg     */
+    --hugo-inv-primary-dark:     #005a87;   /* primary button hover            */
+    --hugo-inv-primary-text:     #ffffff;   /* primary button text             */
+    --hugo-inv-font-family:      -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+    --hugo-inv-font-size:        15px;      /* base font size for the widget   */
+    --hugo-inv-btn-font-size:    15px;      /* button label font size          */
+    --hugo-inv-btn-padding:      10px 20px; /* button padding (controls size)  */
+    --hugo-inv-btn-radius:       6px;       /* button corner radius            */
+    --hugo-inv-modal-max-width:  640px;     /* add-asset modal max width       */
+    /* ═══════════════════════════════════════════════════════════════════ */
+    font-family: var(--hugo-inv-font-family);
+    font-size: var(--hugo-inv-font-size);
     line-height: 1.6;
     color: #1e1e1e;
     box-sizing: border-box;
@@ -39,10 +53,10 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 10px 20px;
+    padding: var(--hugo-inv-btn-padding, 10px 20px);
     border: none;
-    border-radius: 6px;
-    font-size: 15px;
+    border-radius: var(--hugo-inv-btn-radius, 6px);
+    font-size: var(--hugo-inv-btn-font-size, 15px);
     font-weight: 500;
     cursor: pointer;
     transition: background 0.2s, transform 0.1s;
@@ -52,10 +66,10 @@
 .hugo-inv-fe-btn:hover { background: #e0e0e1; }
 .hugo-inv-fe-btn:active { transform: scale(0.98); }
 .hugo-inv-fe-btn-primary {
-    background: #0073aa;
-    color: #fff;
+    background: var(--hugo-inv-primary, #0073aa);
+    color: var(--hugo-inv-primary-text, #fff);
 }
-.hugo-inv-fe-btn-primary:hover { background: #005a87; }
+.hugo-inv-fe-btn-primary:hover { background: var(--hugo-inv-primary-dark, #005a87); }
 .hugo-inv-fe-btn-primary:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -622,12 +636,12 @@ body.hugo-inv-fe-modal-open {
     border-radius: 10px;
     box-shadow: 0 8px 40px rgba(0, 0, 0, 0.25);
     width: 100%;
-    max-width: 640px;
+    max-width: var(--hugo-inv-modal-max-width, 640px);
     max-height: 90vh;
     display: flex;
     flex-direction: column;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
-    font-size: 15px;
+    font-family: var(--hugo-inv-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+    font-size: var(--hugo-inv-font-size, 15px);
     color: #1e1e1e;
     box-sizing: border-box;
 }

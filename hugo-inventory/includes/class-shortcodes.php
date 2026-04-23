@@ -140,6 +140,7 @@ class Shortcodes {
             'category_id'     => '',
             'per_page'        => 50,
             'show_filters'    => 'yes',
+            'font_size'       => '',   // Base font size for the table, e.g. 14px.
         ], $atts, 'hugo_inv_assets' );
 
         $list_args = [
@@ -162,6 +163,9 @@ class Shortcodes {
         $status_opts  = Models\Asset::status_options();
         $show_filters = ( $atts['show_filters'] === 'yes' );
 
+        $fz         = $atts['font_size'] ? preg_replace( '/[^a-zA-Z0-9.%]/', '', $atts['font_size'] ) : '';
+        $style_attr = $fz ? ' style="--hugo-inv-font-size:' . esc_attr( $fz ) . ';--hugo-inv-btn-font-size:' . esc_attr( $fz ) . '"' : '';
+
         $status_colors = [
             'available'   => '#46b450',
             'checked_out' => '#0073aa',
@@ -172,7 +176,7 @@ class Shortcodes {
 
         ob_start();
         ?>
-        <div class="hugo-inv-fe hugo-inv-fe-assets">
+        <div class="hugo-inv-fe hugo-inv-fe-assets"<?php echo $style_attr; ?>>
 
             <!-- Toolbar: count -->
             <div class="hugo-inv-fe-assets-toolbar">
@@ -238,21 +242,36 @@ class Shortcodes {
 
     public function render_add_asset( $atts ): string {
         $atts = shortcode_atts( [
-            'label' => __( 'Add Asset', 'hugo-inventory' ),
+            'label'       => __( 'Add Asset', 'hugo-inventory' ),
+            'bg_color'    => '',   // Primary button / accent color. Any CSS color value.
+            'text_color'  => '',   // Button text color.
+            'font_size'   => '',   // Base font size, e.g. 16px or 1.1rem.
+            'radius'      => '',   // Button corner radius, e.g. 4px or 0.
+            'modal_width' => '',   // Modal max-width, e.g. 800px or 90vw.
         ], $atts, 'hugo_inv_add_asset' );
 
         if ( ! current_user_can( 'manage_options' ) ) {
             return '';
         }
 
+        // Build CSS custom-property overrides from shortcode attributes.
+        $css_san = static fn( string $v ): string => preg_replace( '/[^a-zA-Z0-9#()%.,\/ -]/', '', $v );
+        $vars = [];
+        if ( $atts['bg_color'] )    $vars[] = '--hugo-inv-primary:'         . $css_san( $atts['bg_color'] );
+        if ( $atts['text_color'] )  $vars[] = '--hugo-inv-primary-text:'    . $css_san( $atts['text_color'] );
+        if ( $atts['font_size'] )   $vars[] = '--hugo-inv-font-size:'       . $css_san( $atts['font_size'] )
+                                            . ';--hugo-inv-btn-font-size:'   . $css_san( $atts['font_size'] );
+        if ( $atts['radius'] )      $vars[] = '--hugo-inv-btn-radius:'      . $css_san( $atts['radius'] );
+        if ( $atts['modal_width'] ) $vars[] = '--hugo-inv-modal-max-width:' . $css_san( $atts['modal_width'] );
+        $style_attr = $vars ? ' style="' . esc_attr( implode( ';', $vars ) ) . '"' : '';
+
         ob_start();
         ?>
-        <div class="hugo-inv-fe hugo-inv-fe-add-asset-trigger">
+        <div class="hugo-inv-fe hugo-inv-fe-add-asset-trigger"<?php echo $style_attr; ?>>
             <button type="button" class="hugo-inv-fe-btn hugo-inv-fe-btn-primary hugo-inv-fe-add-btn hugo-inv-fe-open-add-modal">
                 <span class="hugo-inv-fe-add-icon" aria-hidden="true">+</span>
                 <?php echo esc_html( $atts['label'] ); ?>
             </button>
-        </div>
         <?php if ( ! self::$add_modal_rendered ) :
             self::$add_modal_rendered = true; ?>
         <div id="hugo-inv-add-asset-modal" class="hugo-inv-fe-modal-overlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="hugo-inv-add-asset-title">
@@ -333,6 +352,7 @@ class Shortcodes {
             </div><!-- /.hugo-inv-fe-modal -->
         </div><!-- /#hugo-inv-add-asset-modal -->
         <?php endif; ?>
+        </div><!-- /.hugo-inv-fe-add-asset-trigger -->
         <?php
         return ob_get_clean();
     }
