@@ -18,11 +18,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 class Shortcodes {
 
     public function __construct() {
-        add_shortcode( 'hugo_inv_lookup',   [ $this, 'render_lookup' ] );
-        add_shortcode( 'hugo_inv_assets',   [ $this, 'render_assets' ] );
-        add_shortcode( 'hugo_inv_checkout', [ $this, 'render_checkout' ] );
-        add_shortcode( 'hugo_inv_stats',    [ $this, 'render_stats' ] );
+        add_shortcode( 'hugo_inv_lookup',    [ $this, 'render_lookup' ] );
+        add_shortcode( 'hugo_inv_assets',    [ $this, 'render_assets' ] );
+        add_shortcode( 'hugo_inv_checkout',  [ $this, 'render_checkout' ] );
+        add_shortcode( 'hugo_inv_stats',     [ $this, 'render_stats' ] );
         add_shortcode( 'hugo_inv_my_assets', [ $this, 'render_my_assets' ] );
+        add_shortcode( 'hugo_inv_dashboard', [ $this, 'render_dashboard' ] );
 
         add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_assets' ] );
 
@@ -47,7 +48,8 @@ class Shortcodes {
             || has_shortcode( $check, 'hugo_inv_assets' )
             || has_shortcode( $check, 'hugo_inv_checkout' )
             || has_shortcode( $check, 'hugo_inv_stats' )
-            || has_shortcode( $check, 'hugo_inv_my_assets' );
+            || has_shortcode( $check, 'hugo_inv_my_assets' )
+            || has_shortcode( $check, 'hugo_inv_dashboard' );
 
         // Oxygen stores content in ct_builder_shortcodes meta.
         if ( ! $has_shortcode ) {
@@ -58,6 +60,7 @@ class Shortcodes {
                 || str_contains( $oxy, 'hugo_inv_checkout' )
                 || str_contains( $oxy, 'hugo_inv_stats' )
                 || str_contains( $oxy, 'hugo_inv_my_assets' )
+                || str_contains( $oxy, 'hugo_inv_dashboard' )
             ) ) {
                 $has_shortcode = true;
             }
@@ -130,6 +133,8 @@ class Shortcodes {
             'category_id'     => '',
             'per_page'        => 50,
             'show_filters'    => 'yes',
+            'show_add_button' => 'auto',   // auto|yes|no
+            'add_url'         => '',
         ], $atts, 'hugo_inv_assets' );
 
         $list_args = [
@@ -148,8 +153,21 @@ class Shortcodes {
 
         $result       = Models\Asset::list( $list_args );
         $items        = $result['items'];
+        $total        = $result['total'];
         $status_opts  = Models\Asset::status_options();
         $show_filters = ( $atts['show_filters'] === 'yes' );
+
+        // Determine whether to show the Add Asset button.
+        $show_add = false;
+        if ( $atts['show_add_button'] === 'yes' ) {
+            $show_add = true;
+        } elseif ( $atts['show_add_button'] === 'auto' ) {
+            $show_add = current_user_can( 'manage_options' );
+        }
+
+        $add_url = $atts['add_url']
+            ? esc_url( $atts['add_url'] )
+            : esc_url( admin_url( 'admin.php?page=hugo-inventory-assets&action=add' ) );
 
         $status_colors = [
             'available'   => '#46b450',
@@ -162,6 +180,20 @@ class Shortcodes {
         ob_start();
         ?>
         <div class="hugo-inv-fe hugo-inv-fe-assets">
+
+            <!-- Toolbar: count + Add button -->
+            <div class="hugo-inv-fe-assets-toolbar">
+                <span class="hugo-inv-fe-assets-count">
+                    <span class="hugo-inv-fe-assets-count-visible"><?php echo esc_html( number_format_i18n( count( $items ) ) ); ?></span><?php if ( $total > count( $items ) ) : ?><span class="hugo-inv-fe-assets-count-sep"> <?php esc_html_e( 'of', 'hugo-inventory' ); ?> <?php echo esc_html( number_format_i18n( $total ) ); ?></span><?php endif; ?> <?php esc_html_e( 'assets', 'hugo-inventory' ); ?>
+                </span>
+                <?php if ( $show_add ) : ?>
+                <a href="<?php echo $add_url; ?>" class="hugo-inv-fe-btn hugo-inv-fe-btn-primary hugo-inv-fe-add-btn">
+                    <span class="hugo-inv-fe-add-icon" aria-hidden="true">+</span>
+                    <?php esc_html_e( 'Add Asset', 'hugo-inventory' ); ?>
+                </a>
+                <?php endif; ?>
+            </div>
+
             <?php if ( $show_filters ) : ?>
             <div class="hugo-inv-fe-filters">
                 <input type="text" class="hugo-inv-fe-input hugo-inv-fe-assets-search" placeholder="<?php esc_attr_e( 'Search assets…', 'hugo-inventory' ); ?>">
@@ -173,15 +205,16 @@ class Shortcodes {
                 </select>
             </div>
             <?php endif; ?>
+
             <div class="hugo-inv-fe-table-wrap">
-                <table class="hugo-inv-fe-table">
+                <table class="hugo-inv-fe-table hugo-inv-fe-assets-table">
                     <thead>
                         <tr>
-                            <th><?php esc_html_e( 'Asset Tag', 'hugo-inventory' ); ?></th>
-                            <th><?php esc_html_e( 'Name', 'hugo-inventory' ); ?></th>
-                            <th><?php esc_html_e( 'Organization', 'hugo-inventory' ); ?></th>
-                            <th><?php esc_html_e( 'Location', 'hugo-inventory' ); ?></th>
-                            <th><?php esc_html_e( 'Status', 'hugo-inventory' ); ?></th>
+                            <th class="hugo-inv-fe-sortable" data-col="asset_tag"><?php esc_html_e( 'Asset Tag', 'hugo-inventory' ); ?><span class="hugo-inv-fe-sort-icon" aria-hidden="true"></span></th>
+                            <th class="hugo-inv-fe-sortable" data-col="name"><?php esc_html_e( 'Name', 'hugo-inventory' ); ?><span class="hugo-inv-fe-sort-icon" aria-hidden="true"></span></th>
+                            <th class="hugo-inv-fe-sortable" data-col="organization"><?php esc_html_e( 'Organization', 'hugo-inventory' ); ?><span class="hugo-inv-fe-sort-icon" aria-hidden="true"></span></th>
+                            <th class="hugo-inv-fe-sortable" data-col="location"><?php esc_html_e( 'Location', 'hugo-inventory' ); ?><span class="hugo-inv-fe-sort-icon" aria-hidden="true"></span></th>
+                            <th class="hugo-inv-fe-sortable" data-col="status"><?php esc_html_e( 'Status', 'hugo-inventory' ); ?><span class="hugo-inv-fe-sort-icon" aria-hidden="true"></span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -190,7 +223,12 @@ class Shortcodes {
                             $sc = $status_colors[ $item->status ] ?? '#666';
                         ?>
                         <tr data-status="<?php echo esc_attr( $item->status ); ?>"
-                            data-search="<?php echo esc_attr( strtolower( $item->asset_tag . ' ' . $item->name . ' ' . ( $item->organization_name ?? '' ) . ' ' . ( $item->location_name ?? '' ) . ' ' . ( $item->serial_number ?? '' ) ) ); ?>">
+                            data-search="<?php echo esc_attr( strtolower( $item->asset_tag . ' ' . $item->name . ' ' . ( $item->organization_name ?? '' ) . ' ' . ( $item->location_name ?? '' ) . ' ' . ( $item->serial_number ?? '' ) ) ); ?>"
+                            data-asset_tag="<?php echo esc_attr( strtolower( $item->asset_tag ) ); ?>"
+                            data-name="<?php echo esc_attr( strtolower( $item->name ) ); ?>"
+                            data-organization="<?php echo esc_attr( strtolower( $item->organization_name ?? '' ) ); ?>"
+                            data-location="<?php echo esc_attr( strtolower( $item->location_name ?? '' ) ); ?>"
+                            data-status-val="<?php echo esc_attr( $item->status ); ?>">
                             <td><code><?php echo esc_html( $item->asset_tag ); ?></code></td>
                             <td><?php echo esc_html( $item->name ); ?></td>
                             <td><?php echo esc_html( $item->organization_name ?? '—' ); ?></td>
@@ -398,5 +436,315 @@ class Shortcodes {
         }
 
         wp_send_json_success( [ 'message' => __( 'Asset checked in successfully!', 'hugo-inventory' ) ] );
+    }
+
+    // ── Shortcode: Dashboard ───────────────────────────────────────────
+
+    /**
+     * Renders a full inventory dashboard with stat cards, activity feed,
+     * overdue returns, org breakdown, and alerts.
+     *
+     * Attributes:
+     *   organization_id  — optional int, filter all sections to one org
+     *   show_stats        — yes|no (default yes)
+     *   show_activity     — yes|no (default yes)
+     *   show_overdue      — yes|no (default yes)
+     *   show_by_org       — yes|no (default yes)
+     *   show_alerts       — yes|no (default yes)
+     *   activity_limit    — int 1–50 (default 10)
+     *   overdue_limit     — int 1–100 (default 10)
+     *   alert_days        — int 1–365, warranty window in days (default 30)
+     */
+    public function render_dashboard( $atts ): string {
+        $atts = shortcode_atts( [
+            'organization_id' => '',
+            'show_stats'      => 'yes',
+            'show_activity'   => 'yes',
+            'show_overdue'    => 'yes',
+            'show_by_org'     => 'yes',
+            'show_alerts'     => 'yes',
+            'activity_limit'  => 10,
+            'overdue_limit'   => 10,
+            'alert_days'      => 30,
+        ], $atts, 'hugo_inv_dashboard' );
+
+        if ( ! is_user_logged_in() ) {
+            return '<div class="hugo-inv-fe hugo-inv-fe-notice">' . esc_html__( 'Please log in to view the dashboard.', 'hugo-inventory' ) . '</div>';
+        }
+
+        $org_id         = $atts['organization_id'] ? absint( $atts['organization_id'] ) : null;
+        $show_stats     = ( $atts['show_stats']    !== 'no' );
+        $show_activity  = ( $atts['show_activity'] !== 'no' );
+        $show_overdue   = ( $atts['show_overdue']  !== 'no' );
+        $show_by_org    = ( $atts['show_by_org']   !== 'no' );
+        $show_alerts    = ( $atts['show_alerts']   !== 'no' );
+        $activity_limit = max( 1, min( 50,  absint( $atts['activity_limit'] ) ?: 10 ) );
+        $overdue_limit  = max( 1, min( 100, absint( $atts['overdue_limit'] )  ?: 10 ) );
+        $alert_days     = max( 1, min( 365, absint( $atts['alert_days'] )     ?: 30 ) );
+
+        // Fetch data for each enabled section.
+        $by_status  = $show_stats    ? Models\Asset::count_by_status( $org_id )                        : [];
+        $activity   = $show_activity ? Models\Checkout::recent_activity( $activity_limit, $org_id )    : [];
+        $overdue    = $show_overdue  ? Models\Checkout::overdue( $overdue_limit, $org_id )             : [];
+        $by_org     = $show_by_org   ? Models\Asset::count_by_organization( 15 )                       : [];
+        $alerts     = $show_alerts   ? $this->get_dashboard_alerts( $org_id, $alert_days )             : [];
+
+        $status_colors = [
+            'available'   => '#46b450',
+            'checked_out' => '#0073aa',
+            'in_repair'   => '#ffb900',
+            'retired'     => '#826eb4',
+            'lost'        => '#dc3232',
+        ];
+
+        $date_format = get_option( 'date_format' );
+
+        ob_start();
+        ?>
+        <div class="hugo-inv-fe hugo-inv-fe-dashboard">
+
+            <?php if ( $show_stats ) : ?>
+            <div class="hugo-inv-fe-dash-section">
+                <div class="hugo-inv-fe-stats">
+                    <?php $total = array_sum( $by_status ); ?>
+                    <div class="hugo-inv-fe-stat-card" style="border-left-color:#23282d;">
+                        <div class="hugo-inv-fe-stat-number"><?php echo esc_html( number_format_i18n( $total ) ); ?></div>
+                        <div class="hugo-inv-fe-stat-label"><?php esc_html_e( 'Total Assets', 'hugo-inventory' ); ?></div>
+                    </div>
+                    <?php foreach ( $by_status as $status => $count ) :
+                        $color = $status_colors[ $status ] ?? '#666';
+                    ?>
+                    <div class="hugo-inv-fe-stat-card" style="border-left-color:<?php echo esc_attr( $color ); ?>;">
+                        <div class="hugo-inv-fe-stat-number"><?php echo esc_html( number_format_i18n( $count ) ); ?></div>
+                        <div class="hugo-inv-fe-stat-label"><?php echo esc_html( ucwords( str_replace( '_', ' ', $status ) ) ); ?></div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <?php if ( $show_activity || $show_overdue ) : ?>
+            <div class="hugo-inv-fe-dash-grid">
+
+                <?php if ( $show_activity ) : ?>
+                <div class="hugo-inv-fe-dash-panel">
+                    <div class="hugo-inv-fe-dash-panel-header">
+                        <span class="hugo-inv-fe-dash-panel-title"><?php esc_html_e( 'Recent Activity', 'hugo-inventory' ); ?></span>
+                    </div>
+                    <?php if ( $activity ) : ?>
+                    <ul class="hugo-inv-fe-activity-list">
+                        <?php foreach ( $activity as $event ) :
+                            $is_out      = ( $event->event === 'checkout' );
+                            $dot_mod     = $is_out ? 'checkout' : 'checkin';
+                            $action_text = $is_out
+                                ? __( 'checked out', 'hugo-inventory' )
+                                : __( 'returned', 'hugo-inventory' );
+                            $ts = strtotime( $event->event_date );
+                        ?>
+                        <li class="hugo-inv-fe-activity-item">
+                            <span class="hugo-inv-fe-activity-dot hugo-inv-fe-activity-dot--<?php echo esc_attr( $dot_mod ); ?>"></span>
+                            <div class="hugo-inv-fe-activity-body">
+                                <span class="hugo-inv-fe-activity-text">
+                                    <strong><?php echo esc_html( $event->user_name ?? __( 'Unknown', 'hugo-inventory' ) ); ?></strong>
+                                    <?php echo esc_html( $action_text ); ?>
+                                    <code><?php echo esc_html( $event->asset_tag ); ?></code>
+                                    &mdash; <?php echo esc_html( $event->asset_name ); ?>
+                                </span>
+                                <span class="hugo-inv-fe-activity-time">
+                                    <?php echo esc_html( human_time_diff( $ts, current_time( 'timestamp' ) ) . ' ' . __( 'ago', 'hugo-inventory' ) ); ?>
+                                </span>
+                            </div>
+                        </li>
+                        <?php endforeach; ?>
+                    </ul>
+                    <?php else : ?>
+                    <p class="hugo-inv-fe-dash-empty"><?php esc_html_e( 'No recent activity.', 'hugo-inventory' ); ?></p>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+
+                <?php if ( $show_overdue ) : ?>
+                <div class="hugo-inv-fe-dash-panel hugo-inv-fe-dash-panel--warn">
+                    <div class="hugo-inv-fe-dash-panel-header">
+                        <span class="hugo-inv-fe-dash-panel-title"><?php esc_html_e( 'Overdue Returns', 'hugo-inventory' ); ?></span>
+                        <?php if ( $overdue ) : ?>
+                        <span class="hugo-inv-fe-dash-badge hugo-inv-fe-dash-badge--warn"><?php echo esc_html( count( $overdue ) ); ?></span>
+                        <?php endif; ?>
+                    </div>
+                    <?php if ( $overdue ) : ?>
+                    <div class="hugo-inv-fe-table-wrap">
+                        <table class="hugo-inv-fe-table hugo-inv-fe-table--compact">
+                            <thead>
+                                <tr>
+                                    <th><?php esc_html_e( 'Asset', 'hugo-inventory' ); ?></th>
+                                    <th><?php esc_html_e( 'Checked Out To', 'hugo-inventory' ); ?></th>
+                                    <th><?php esc_html_e( 'Days Over', 'hugo-inventory' ); ?></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ( $overdue as $row ) : ?>
+                                <tr>
+                                    <td>
+                                        <div><strong><?php echo esc_html( $row->asset_name ); ?></strong></div>
+                                        <code><?php echo esc_html( $row->asset_tag ); ?></code>
+                                    </td>
+                                    <td><?php echo esc_html( $row->user_name ?? '—' ); ?></td>
+                                    <td><span class="hugo-inv-fe-overdue-days"><?php echo esc_html( $row->days_overdue ); ?>d</span></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <?php else : ?>
+                    <p class="hugo-inv-fe-dash-empty hugo-inv-fe-dash-empty--good"><?php esc_html_e( 'No overdue returns. ', 'hugo-inventory' ); ?></p>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+
+            </div>
+            <?php endif; ?>
+
+            <?php if ( $show_by_org || $show_alerts ) : ?>
+            <div class="hugo-inv-fe-dash-grid">
+
+                <?php if ( $show_by_org ) : ?>
+                <div class="hugo-inv-fe-dash-panel">
+                    <div class="hugo-inv-fe-dash-panel-header">
+                        <span class="hugo-inv-fe-dash-panel-title"><?php esc_html_e( 'Assets by Organization', 'hugo-inventory' ); ?></span>
+                    </div>
+                    <?php if ( $by_org ) :
+                        $max_cnt = max( array_column( (array) $by_org, 'cnt' ) );
+                    ?>
+                    <div class="hugo-inv-fe-org-bars">
+                        <?php foreach ( $by_org as $org_row ) :
+                            $pct = $max_cnt > 0 ? round( ( $org_row->cnt / $max_cnt ) * 100 ) : 0;
+                        ?>
+                        <div class="hugo-inv-fe-org-bar-row">
+                            <span class="hugo-inv-fe-org-bar-label" title="<?php echo esc_attr( $org_row->name ); ?>"><?php echo esc_html( $org_row->name ); ?></span>
+                            <div class="hugo-inv-fe-org-bar-track">
+                                <div class="hugo-inv-fe-org-bar-fill" style="width:<?php echo esc_attr( $pct ); ?>%;"></div>
+                            </div>
+                            <span class="hugo-inv-fe-org-bar-count"><?php echo esc_html( number_format_i18n( (int) $org_row->cnt ) ); ?></span>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php else : ?>
+                    <p class="hugo-inv-fe-dash-empty"><?php esc_html_e( 'No organization data.', 'hugo-inventory' ); ?></p>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+
+                <?php if ( $show_alerts ) :
+                    $alert_total = count( $alerts['at_risk'] ?? [] ) + count( $alerts['warranty'] ?? [] );
+                ?>
+                <div class="hugo-inv-fe-dash-panel hugo-inv-fe-dash-panel--alert">
+                    <div class="hugo-inv-fe-dash-panel-header">
+                        <span class="hugo-inv-fe-dash-panel-title"><?php esc_html_e( 'Alerts', 'hugo-inventory' ); ?></span>
+                        <?php if ( $alert_total ) : ?>
+                        <span class="hugo-inv-fe-dash-badge hugo-inv-fe-dash-badge--alert"><?php echo esc_html( $alert_total ); ?></span>
+                        <?php endif; ?>
+                    </div>
+
+                    <?php if ( ! empty( $alerts['at_risk'] ) ) : ?>
+                    <div class="hugo-inv-fe-alert-group">
+                        <div class="hugo-inv-fe-alert-group-label"><?php esc_html_e( 'At Risk', 'hugo-inventory' ); ?></div>
+                        <ul class="hugo-inv-fe-alert-list">
+                            <?php foreach ( $alerts['at_risk'] as $ar ) :
+                                $sc = $status_colors[ $ar->status ] ?? '#666';
+                            ?>
+                            <li class="hugo-inv-fe-alert-item">
+                                <span class="hugo-inv-fe-status" style="background:<?php echo esc_attr( $sc ); ?>;<?php echo $ar->status === 'in_repair' ? 'color:#23282d;' : ''; ?>"><?php echo esc_html( ucwords( str_replace( '_', ' ', $ar->status ) ) ); ?></span>
+                                <span class="hugo-inv-fe-alert-name" title="<?php echo esc_attr( $ar->name ); ?>"><?php echo esc_html( $ar->name ); ?></span>
+                                <code class="hugo-inv-fe-alert-tag"><?php echo esc_html( $ar->asset_tag ); ?></code>
+                            </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if ( ! empty( $alerts['warranty'] ) ) : ?>
+                    <div class="hugo-inv-fe-alert-group">
+                        <div class="hugo-inv-fe-alert-group-label"><?php esc_html_e( 'Warranty Expiring', 'hugo-inventory' ); ?></div>
+                        <ul class="hugo-inv-fe-alert-list">
+                            <?php foreach ( $alerts['warranty'] as $wa ) : ?>
+                            <li class="hugo-inv-fe-alert-item">
+                                <span class="hugo-inv-fe-alert-date"><?php echo esc_html( wp_date( $date_format, strtotime( $wa->warranty_expiration ) ) ); ?></span>
+                                <span class="hugo-inv-fe-alert-name" title="<?php echo esc_attr( $wa->name ); ?>"><?php echo esc_html( $wa->name ); ?></span>
+                                <code class="hugo-inv-fe-alert-tag"><?php echo esc_html( $wa->asset_tag ); ?></code>
+                            </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if ( ! $alert_total ) : ?>
+                    <p class="hugo-inv-fe-dash-empty hugo-inv-fe-dash-empty--good"><?php esc_html_e( 'No alerts.', 'hugo-inventory' ); ?></p>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+
+            </div>
+            <?php endif; ?>
+
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * Query at-risk assets (lost/in_repair) and warranty-expiring assets for the Alerts panel.
+     *
+     * @return array{ at_risk: object[], warranty: object[] }
+     */
+    private function get_dashboard_alerts( ?int $org_id, int $alert_days ): array {
+        global $wpdb;
+        $t     = $wpdb->prefix . 'inventory_assets';
+        $t_org = $wpdb->prefix . 'inventory_organizations';
+
+        // At-risk: lost or in_repair.
+        $ar_where  = "a.status IN ('lost','in_repair')";
+        $ar_params = [];
+        if ( $org_id !== null ) {
+            $ar_where   .= ' AND a.organization_id = %d';
+            $ar_params[] = $org_id;
+        }
+        $ar_params[] = 25;
+
+        $at_risk = $wpdb->get_results( $wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL
+            "SELECT a.id, a.asset_tag, a.name, a.status, o.name AS organization_name
+             FROM {$t} a
+             LEFT JOIN {$t_org} o ON a.organization_id = o.id
+             WHERE {$ar_where}
+             ORDER BY a.status, a.name
+             LIMIT %d",
+            ...$ar_params
+        ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+
+        // Warranty expiring within $alert_days.
+        $w_where  = 'a.warranty_expiration IS NOT NULL AND a.warranty_expiration <> ""'
+                  . ' AND a.warranty_expiration <= DATE_ADD(CURDATE(), INTERVAL %d DAY)'
+                  . ' AND a.warranty_expiration >= CURDATE()'
+                  . " AND a.status NOT IN ('retired','lost')";
+        $w_params = [ $alert_days ];
+        if ( $org_id !== null ) {
+            $w_where   .= ' AND a.organization_id = %d';
+            $w_params[] = $org_id;
+        }
+        $w_params[] = 20;
+
+        $warranty = $wpdb->get_results( $wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL
+            "SELECT a.id, a.asset_tag, a.name, a.warranty_expiration, o.name AS organization_name
+             FROM {$t} a
+             LEFT JOIN {$t_org} o ON a.organization_id = o.id
+             WHERE {$w_where}
+             ORDER BY a.warranty_expiration ASC
+             LIMIT %d",
+            ...$w_params
+        ) ); // phpcs:ignore WordPress.DB.PreparedSQL
+
+        return [
+            'at_risk'  => $at_risk ?: [],
+            'warranty' => $warranty ?: [],
+        ];
     }
 }

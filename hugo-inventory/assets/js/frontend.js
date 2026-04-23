@@ -65,27 +65,77 @@
         });
     }
 
-    // ── Assets table filter ────────────────────────────────────────
+    // ── Assets table filter + count ────────────────────────────────
 
     function initAssetsFilter() {
         $('.hugo-inv-fe-assets').each(function() {
-            var $wrap = $(this);
-            var $search = $wrap.find('.hugo-inv-fe-assets-search');
-            var $status = $wrap.find('.hugo-inv-fe-assets-status');
+            var $wrap    = $(this);
+            var $search  = $wrap.find('.hugo-inv-fe-assets-search');
+            var $status  = $wrap.find('.hugo-inv-fe-assets-status');
+            var $countEl = $wrap.find('.hugo-inv-fe-assets-count-visible');
 
             function filter() {
                 var q = $.trim($search.val()).toLowerCase();
                 var s = $status.val();
-                $wrap.find('.hugo-inv-fe-table tbody tr').each(function() {
+                var visible = 0;
+                $wrap.find('.hugo-inv-fe-assets-table tbody tr').each(function() {
                     var $row = $(this);
                     var matchQ = !q || ($row.data('search') || '').toString().indexOf(q) !== -1;
                     var matchS = !s || $row.data('status') === s;
-                    $row.toggle(matchQ && matchS);
+                    var show   = matchQ && matchS;
+                    $row.toggle(show);
+                    if (show) visible++;
                 });
+                if ($countEl.length) $countEl.text(visible.toLocaleString());
             }
 
             $search.on('keyup', filter);
             $status.on('change', filter);
+        });
+    }
+
+    // ── Assets table column sort ───────────────────────────────────
+
+    function initAssetsSort() {
+        $(document).on('click', '.hugo-inv-fe-assets-table .hugo-inv-fe-sortable', function() {
+            var $th    = $(this);
+            var $table = $th.closest('table');
+            var $tbody = $table.find('tbody');
+            var col    = $th.data('col');
+
+            // Determine direction: flip if already sorted this col ASC, else default ASC.
+            var currentDir = $th.data('sort-dir') || '';
+            var dir = (currentDir === 'asc') ? 'desc' : 'asc';
+
+            // Clear all other headers.
+            $table.find('.hugo-inv-fe-sortable').not($th)
+                .removeData('sort-dir')
+                .removeClass('sorted-asc sorted-desc');
+
+            $th.data('sort-dir', dir).removeClass('sorted-asc sorted-desc').addClass('sorted-' + dir);
+
+            // Collect and sort visible + hidden rows separately (keep empty row in place).
+            var $rows = $tbody.find('tr').not('.hugo-inv-fe-empty-row');
+            var rows  = $rows.toArray();
+
+            rows.sort(function(a, b) {
+                var aVal = ($(a).data(col) || '').toString();
+                var bVal = ($(b).data(col) || '').toString();
+                // Numeric sort if both look like numbers.
+                var aNum = parseFloat(aVal);
+                var bNum = parseFloat(bVal);
+                var cmp;
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    cmp = aNum - bNum;
+                } else {
+                    cmp = aVal.localeCompare(bVal, undefined, { sensitivity: 'base' });
+                }
+                return dir === 'asc' ? cmp : -cmp;
+            });
+
+            $.each(rows, function(i, row) {
+                $tbody.append(row);
+            });
         });
     }
 
@@ -239,6 +289,7 @@
     $(document).ready(function() {
         initLookup();
         initAssetsFilter();
+        initAssetsSort();
         initCheckout();
     });
 

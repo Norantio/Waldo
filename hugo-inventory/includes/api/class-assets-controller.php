@@ -200,7 +200,7 @@ class Assets_Controller {
                     'serial_number'        => $hydrated->serial_number ?? '',
                     'assigned_user_display' => $hydrated->assigned_user_id
                         ? ( get_userdata( (int) $hydrated->assigned_user_id )->display_name ?? '' )
-                        : '',
+                        : ( $hydrated->assigned_entra_name ?? '' ),
                     'purchase_date'        => $hydrated->purchase_date ?? '',
                     'purchase_cost'        => $hydrated->purchase_cost ?? '',
                     'warranty_expiration'  => $hydrated->warranty_expiration ?? '',

@@ -52,5 +52,6 @@ final class Plugin {
         ( new API\Locations_Controller() )->register_routes();
         ( new API\Assets_Controller() )->register_routes();
         ( new API\Dashboard_Controller() )->register_routes();
+        ( new API\Users_Controller() )->register_routes();
     }
 }

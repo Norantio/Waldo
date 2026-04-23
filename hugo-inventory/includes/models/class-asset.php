@@ -250,7 +250,8 @@ class Asset {
                             c.name  AS category_name,
                             l.name  AS location_name,
                             tp.name AS type_name,
-                            u.display_name AS assigned_user_display
+                            u.display_name AS assigned_user_display,
+                            COALESCE(u.display_name, a.assigned_entra_name) AS assigned_display
                             {$select_extra}
                      FROM {$t} a
                      LEFT JOIN {$p}inventory_organizations o  ON a.organization_id = o.id
@@ -378,6 +379,14 @@ class Asset {
             $insert_data['assigned_user_id'] = (int) $data['assigned_user_id'];
             $insert_formats[]                = '%d';
         }
+        if ( ! empty( $data['assigned_entra_id'] ) ) {
+            $insert_data['assigned_entra_id'] = sanitize_text_field( $data['assigned_entra_id'] );
+            $insert_formats[]                 = '%s';
+        }
+        if ( ! empty( $data['assigned_entra_name'] ) ) {
+            $insert_data['assigned_entra_name'] = sanitize_text_field( $data['assigned_entra_name'] );
+            $insert_formats[]                   = '%s';
+        }
 
         $insert_data['status'] = $status;
         $insert_formats[]      = '%s';
@@ -446,6 +455,15 @@ class Asset {
             if ( array_key_exists( $f, $data ) ) {
                 $fields[ $f ] = ! empty( $data[ $f ] ) ? (int) $data[ $f ] : null;
                 $formats[]    = '%d';
+            }
+        }
+
+        // Entra ID string fields — allow clearing.
+        $entra_fields = [ 'assigned_entra_id', 'assigned_entra_name' ];
+        foreach ( $entra_fields as $f ) {
+            if ( array_key_exists( $f, $data ) ) {
+                $fields[ $f ] = ! empty( $data[ $f ] ) ? sanitize_text_field( $data[ $f ] ) : null;
+                $formats[]    = '%s';
             }
         }
 
@@ -571,5 +589,28 @@ class Asset {
             $counts[ $row->status ] = (int) $row->cnt;
         }
         return $counts;
+    }
+
+    /**
+     * Get asset counts grouped by organization, ordered by count descending.
+     *
+     * @return array  Each item: name (string), cnt (int).
+     */
+    public static function count_by_organization( int $limit = 15 ): array {
+        global $wpdb;
+        $t     = self::table();
+        $t_org = $wpdb->prefix . 'inventory_organizations';
+
+        $rows = $wpdb->get_results( $wpdb->prepare(
+            "SELECT o.name, COUNT(*) AS cnt
+             FROM {$t} a
+             INNER JOIN {$t_org} o ON a.organization_id = o.id
+             GROUP BY a.organization_id
+             ORDER BY cnt DESC
+             LIMIT %d",
+            $limit
+        ) );
+
+        return $rows ?: [];
     }
 }

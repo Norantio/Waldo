@@ -176,6 +176,55 @@
     min-width: 200px;
 }
 
+/* ── Assets toolbar ─────────────────────── */
+.hugo-inv-fe-assets-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    gap: 12px;
+}
+.hugo-inv-fe-assets-count {
+    font-size: 13px;
+    color: #666;
+    font-weight: 500;
+}
+.hugo-inv-fe-assets-count-visible {
+    font-weight: 700;
+    color: #1e1e1e;
+    font-size: 15px;
+}
+.hugo-inv-fe-add-btn {
+    flex-shrink: 0;
+}
+.hugo-inv-fe-add-icon {
+    font-size: 18px;
+    line-height: 1;
+    font-weight: 400;
+}
+
+/* ── Sortable column headers ────────────── */
+.hugo-inv-fe-table .hugo-inv-fe-sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+.hugo-inv-fe-table .hugo-inv-fe-sortable:hover {
+    background: #eef3f7;
+}
+.hugo-inv-fe-sort-icon {
+    display: inline-block;
+    width: 14px;
+    text-align: center;
+    margin-left: 4px;
+    font-size: 10px;
+    color: #aaa;
+    vertical-align: middle;
+}
+.hugo-inv-fe-sortable.sorted-asc  .hugo-inv-fe-sort-icon::after { content: '▲'; color: #0073aa; }
+.hugo-inv-fe-sortable.sorted-desc .hugo-inv-fe-sort-icon::after { content: '▼'; color: #0073aa; }
+.hugo-inv-fe-sortable:not(.sorted-asc):not(.sorted-desc) .hugo-inv-fe-sort-icon::after { content: '⇅'; }
+
 /* ── Stat cards ─────────────────────────── */
 .hugo-inv-fe-stats {
     display: flex;
@@ -311,5 +360,239 @@
     }
     .hugo-inv-fe-filters {
         flex-direction: column;
+    }
+}
+
+/* ═══════════════════════════════════════════
+   Dashboard shortcode [hugo_inv_dashboard]
+   ═══════════════════════════════════════════ */
+
+.hugo-inv-fe-dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* ── Dashboard panels ───────────────────── */
+.hugo-inv-fe-dash-panel {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 20px 24px;
+    overflow: hidden;
+}
+.hugo-inv-fe-dash-panel--warn {
+    border-left: 4px solid #ffb900;
+}
+.hugo-inv-fe-dash-panel--alert {
+    border-left: 4px solid #dc3232;
+}
+.hugo-inv-fe-dash-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #f0f0f1;
+}
+.hugo-inv-fe-dash-panel-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: #555;
+}
+
+/* ── Dashboard 2-col grid ───────────────── */
+.hugo-inv-fe-dash-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+/* ── Dashboard badges ───────────────────── */
+.hugo-inv-fe-dash-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 11px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+.hugo-inv-fe-dash-badge--warn {
+    background: #fff3cd;
+    color: #856404;
+}
+.hugo-inv-fe-dash-badge--alert {
+    background: #fef1f1;
+    color: #dc3232;
+}
+
+/* ── Dashboard empty states ─────────────── */
+.hugo-inv-fe-dash-empty {
+    color: #888;
+    font-size: 14px;
+    font-style: italic;
+    margin: 0;
+    padding: 8px 0;
+}
+.hugo-inv-fe-dash-empty--good {
+    color: #46b450;
+    font-style: normal;
+    font-weight: 500;
+}
+
+/* ── Activity feed ──────────────────────── */
+.hugo-inv-fe-activity-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.hugo-inv-fe-activity-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+.hugo-inv-fe-activity-dot {
+    flex-shrink: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-top: 4px;
+}
+.hugo-inv-fe-activity-dot--checkout { background: #0073aa; }
+.hugo-inv-fe-activity-dot--checkin  { background: #46b450; }
+.hugo-inv-fe-activity-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.hugo-inv-fe-activity-text {
+    font-size: 14px;
+    line-height: 1.4;
+    color: #333;
+}
+.hugo-inv-fe-activity-time {
+    font-size: 12px;
+    color: #888;
+}
+
+/* ── Overdue days badge ─────────────────── */
+.hugo-inv-fe-overdue-days {
+    display: inline-block;
+    padding: 2px 8px;
+    background: #fef1f1;
+    color: #dc3232;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+/* ── Compact table modifier ─────────────── */
+.hugo-inv-fe-table--compact th,
+.hugo-inv-fe-table--compact td {
+    padding: 8px 10px;
+}
+
+/* ── Org bar chart ──────────────────────── */
+.hugo-inv-fe-org-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.hugo-inv-fe-org-bar-row {
+    display: grid;
+    grid-template-columns: 130px 1fr 40px;
+    align-items: center;
+    gap: 10px;
+}
+.hugo-inv-fe-org-bar-label {
+    font-size: 13px;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.hugo-inv-fe-org-bar-track {
+    background: #f0f0f1;
+    border-radius: 4px;
+    height: 10px;
+    overflow: hidden;
+}
+.hugo-inv-fe-org-bar-fill {
+    height: 100%;
+    background: #0073aa;
+    border-radius: 4px;
+}
+.hugo-inv-fe-org-bar-count {
+    font-size: 13px;
+    font-weight: 600;
+    color: #333;
+    text-align: right;
+}
+
+/* ── Alert list ─────────────────────────── */
+.hugo-inv-fe-alert-group {
+    margin-bottom: 16px;
+}
+.hugo-inv-fe-alert-group:last-child {
+    margin-bottom: 0;
+}
+.hugo-inv-fe-alert-group-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #888;
+    margin-bottom: 8px;
+}
+.hugo-inv-fe-alert-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.hugo-inv-fe-alert-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+.hugo-inv-fe-alert-name {
+    flex: 1;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.hugo-inv-fe-alert-tag {
+    font-size: 11px;
+    padding: 1px 5px;
+    background: #f0f0f1;
+    border-radius: 3px;
+}
+.hugo-inv-fe-alert-date {
+    font-size: 12px;
+    color: #dc3232;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* ── Dashboard responsive ───────────────── */
+@media screen and (max-width: 768px) {
+    .hugo-inv-fe-dash-grid {
+        grid-template-columns: 1fr;
+    }
+    .hugo-inv-fe-org-bar-row {
+        grid-template-columns: 100px 1fr 35px;
     }
 }

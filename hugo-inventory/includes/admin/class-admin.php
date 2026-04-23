@@ -87,6 +87,15 @@ class Admin {
             'hugo-inventory-settings',
             [ $this, 'render_settings_page' ]
         );
+
+        add_submenu_page(
+            'hugo-inventory',
+            __( 'Import', 'hugo-inventory' ),
+            __( 'Import', 'hugo-inventory' ),
+            'manage_options',
+            'hugo-inventory-import',
+            [ $this, 'render_import_page' ]
+        );
     }
 
     /**
@@ -101,14 +110,30 @@ class Admin {
             'hugo-inventory-admin',
             HUGO_INV_PLUGIN_URL . 'assets/css/admin.css',
             [],
-            HUGO_INV_VERSION
+            HUGO_INV_VERSION . '.' . time()
+        );
+
+        // Select2 for user search.
+        wp_enqueue_style(
+            'select2',
+            'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css',
+            [],
+            '4.1.0-rc.0'
+        );
+
+        wp_enqueue_script(
+            'select2',
+            'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js',
+            [ 'jquery' ],
+            '4.1.0-rc.0',
+            true
         );
 
         wp_enqueue_script(
             'hugo-inventory-admin',
             HUGO_INV_PLUGIN_URL . 'assets/js/admin.js',
-            [ 'jquery' ],
-            HUGO_INV_VERSION,
+            [ 'jquery', 'select2' ],
+            HUGO_INV_VERSION . '.' . time(),
             true
         );
 
@@ -294,7 +319,7 @@ class Admin {
                                     <td><a href="<?php echo esc_url( $edit_url ); ?>"><?php echo esc_html( $item->name ); ?></a></td>
                                     <td><?php echo esc_html( $item->organization_name ?? '—' ); ?></td>
                                     <td><?php echo esc_html( $item->location_name ?? '—' ); ?></td>
-                                    <td><?php echo esc_html( $item->assigned_user_display ?? '—' ); ?></td>
+                                    <td><?php echo esc_html( $item->assigned_display ?? $item->assigned_user_display ?? '—' ); ?></td>
                                     <td><span class="hugo-inv-status hugo-inv-status-<?php echo esc_attr( $item->status ); ?>"><?php echo esc_html( $status_lbl ); ?></span></td>
                                     <td class="hugo-inv-actions-cell">
                                         <a href="<?php echo esc_url( $edit_url ); ?>" title="<?php esc_attr_e( 'Edit', 'hugo-inventory' ); ?>"><span class="dashicons dashicons-edit"></span></a>
@@ -912,11 +937,24 @@ class Admin {
                 'category_id'        => ! empty( $_POST['category_id'] ) ? absint( $_POST['category_id'] ) : null,
                 'location_id'        => ! empty( $_POST['location_id'] ) ? absint( $_POST['location_id'] ) : null,
                 'assigned_user_id'   => ! empty( $_POST['assigned_user_id'] ) ? absint( $_POST['assigned_user_id'] ) : null,
+                'assigned_entra_id'  => ! empty( $_POST['assigned_entra_id'] ) ? sanitize_text_field( wp_unslash( $_POST['assigned_entra_id'] ) ) : null,
+                'assigned_entra_name' => ! empty( $_POST['assigned_entra_name'] ) ? sanitize_text_field( wp_unslash( $_POST['assigned_entra_name'] ) ) : null,
                 'status'             => sanitize_key( $_POST['status'] ?? 'available' ),
                 'purchase_date'      => sanitize_text_field( $_POST['purchase_date'] ?? '' ),
                 'purchase_cost'      => ! empty( $_POST['purchase_cost'] ) ? floatval( $_POST['purchase_cost'] ) : null,
                 'warranty_expiration' => sanitize_text_field( $_POST['warranty_expiration'] ?? '' ),
             ];
+
+            // Mutual exclusion: if Entra user is set, clear WP user and vice versa.
+            if ( ! empty( $data['assigned_entra_id'] ) ) {
+                $data['assigned_user_id'] = null;
+            } elseif ( ! empty( $data['assigned_user_id'] ) ) {
+                $data['assigned_entra_id']   = null;
+                $data['assigned_entra_name'] = null;
+            } else {
+                $data['assigned_entra_id']   = null;
+                $data['assigned_entra_name'] = null;
+            }
 
             // Remember last-used org for convenience.
             update_user_meta( get_current_user_id(), 'hugo_inv_last_org', $data['organization_id'] );
@@ -957,8 +995,22 @@ class Admin {
         // Pre-fill barcode from query string (e.g. from lookup redirect).
         $prefill_barcode = isset( $_GET['barcode'] ) ? sanitize_text_field( wp_unslash( $_GET['barcode'] ) ) : '';
 
-        // WP users for assignment dropdown.
-        $wp_users = get_users( [ 'fields' => [ 'ID', 'display_name' ], 'orderby' => 'display_name' ] );
+        // Determine currently assigned user for pre-selection.
+        $assigned_source = '';
+        $assigned_value  = '';
+        $assigned_label  = '';
+        if ( $is_edit && $asset ) {
+            if ( ! empty( $asset->assigned_user_id ) ) {
+                $assigned_source = 'wp';
+                $assigned_value  = (int) $asset->assigned_user_id;
+                $u_data          = get_userdata( $assigned_value );
+                $assigned_label  = $u_data ? $u_data->display_name : '';
+            } elseif ( ! empty( $asset->assigned_entra_id ) ) {
+                $assigned_source = 'entra';
+                $assigned_value  = $asset->assigned_entra_id;
+                $assigned_label  = $asset->assigned_entra_name ?? '';
+            }
+        }
 
         echo '<div class="wrap">';
         echo '<h1>' . esc_html( $title ) . '</h1>';
@@ -1066,16 +1118,19 @@ class Admin {
                     </td>
                 </tr>
                 <tr>
-                    <th scope="row"><label for="assigned_user_id"><?php esc_html_e( 'Assigned User', 'hugo-inventory' ); ?></label></th>
+                    <th scope="row"><label for="assigned_user_search"><?php esc_html_e( 'Assigned User', 'hugo-inventory' ); ?></label></th>
                     <td>
-                        <select id="assigned_user_id" name="assigned_user_id">
-                            <option value=""><?php esc_html_e( '— Unassigned —', 'hugo-inventory' ); ?></option>
-                            <?php foreach ( $wp_users as $u ) : ?>
-                                <option value="<?php echo esc_attr( $u->ID ); ?>" <?php selected( $asset->assigned_user_id ?? '', $u->ID ); ?>>
-                                    <?php echo esc_html( $u->display_name ); ?>
+                        <select id="assigned_user_search" style="width:100%;max-width:400px;">
+                            <?php if ( $assigned_value ) : ?>
+                                <option value="<?php echo esc_attr( $assigned_source . ':' . $assigned_value ); ?>" selected>
+                                    <?php echo esc_html( $assigned_label ); ?>
                                 </option>
-                            <?php endforeach; ?>
+                            <?php endif; ?>
                         </select>
+                        <input type="hidden" id="assigned_user_id" name="assigned_user_id" value="<?php echo esc_attr( $assigned_source === 'wp' ? $assigned_value : '' ); ?>">
+                        <input type="hidden" id="assigned_entra_id" name="assigned_entra_id" value="<?php echo esc_attr( $assigned_source === 'entra' ? $assigned_value : '' ); ?>">
+                        <input type="hidden" id="assigned_entra_name" name="assigned_entra_name" value="<?php echo esc_attr( $assigned_source === 'entra' ? $assigned_label : '' ); ?>">
+                        <p class="description"><?php esc_html_e( 'Search by name or email. Results include WordPress users and Entra ID directory users.', 'hugo-inventory' ); ?></p>
                     </td>
                 </tr>
                 <tr>
@@ -1132,7 +1187,20 @@ class Admin {
                 'label_height_mm'      => absint( $_POST['label_height_mm'] ?? 30 ),
                 'label_code_type'      => sanitize_key( $_POST['label_code_type'] ?? 'qr' ),
                 'items_per_page'       => absint( $_POST['items_per_page'] ?? 50 ),
+                'entra_enabled'        => ! empty( $_POST['entra_enabled'] ),
+                'entra_tenant_id'      => sanitize_text_field( wp_unslash( $_POST['entra_tenant_id'] ?? '' ) ),
+                'entra_client_id'      => sanitize_text_field( wp_unslash( $_POST['entra_client_id'] ?? '' ) ),
             ];
+
+            // Encrypt client secret if provided (don't overwrite with blank).
+            $secret_raw = wp_unslash( $_POST['entra_client_secret'] ?? '' );
+            if ( ! empty( $secret_raw ) ) {
+                $new['entra_client_secret_enc'] = \Hugo_Inventory\Services\Entra_Client::encrypt_secret( $secret_raw );
+            } else {
+                // Preserve existing encrypted secret.
+                $existing = get_option( 'hugo_inventory_settings', [] );
+                $new['entra_client_secret_enc'] = $existing['entra_client_secret_enc'] ?? '';
+            }
 
             // Clamp digits 1-10.
             $new['asset_tag_digits'] = max( 1, min( 10, $new['asset_tag_digits'] ) );
@@ -1153,16 +1221,20 @@ class Admin {
         }
 
         $s = wp_parse_args( get_option( 'hugo_inventory_settings', [] ), [
-            'asset_tag_prefix'     => 'HUGO',
-            'asset_tag_digits'     => 6,
-            'default_organization' => '',
-            'scanner_threshold'    => 50,
-            'qr_payload_format'    => 'tag_only',
-            'label_cols'           => 3,
-            'label_width_mm'       => 63,
-            'label_height_mm'      => 30,
-            'label_code_type'      => 'qr',
-            'items_per_page'       => 50,
+            'asset_tag_prefix'         => 'HUGO',
+            'asset_tag_digits'         => 6,
+            'default_organization'     => '',
+            'scanner_threshold'        => 50,
+            'qr_payload_format'        => 'tag_only',
+            'label_cols'               => 3,
+            'label_width_mm'           => 63,
+            'label_height_mm'          => 30,
+            'label_code_type'          => 'qr',
+            'items_per_page'           => 50,
+            'entra_enabled'            => false,
+            'entra_tenant_id'          => '',
+            'entra_client_id'          => '',
+            'entra_client_secret_enc'  => '',
         ] );
 
         $org_options = \Hugo_Inventory\Models\Organization::dropdown_options();
@@ -1281,8 +1353,290 @@ class Admin {
                 </tr>
             </table>
 
+            <h2><?php esc_html_e( 'Microsoft Entra ID (Azure AD)', 'hugo-inventory' ); ?></h2>
+            <p class="description" style="margin-bottom:12px;">
+                <?php esc_html_e( 'Connect to your Entra ID tenant to search and assign assets to directory users. Requires an App Registration with User.Read.All (Application) permission and admin consent.', 'hugo-inventory' ); ?>
+            </p>
+            <table class="form-table">
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Enable Entra ID', 'hugo-inventory' ); ?></th>
+                    <td>
+                        <label>
+                            <input type="checkbox" name="entra_enabled" value="1" <?php checked( $s['entra_enabled'] ); ?>>
+                            <?php esc_html_e( 'Enable Entra ID user lookup when assigning assets', 'hugo-inventory' ); ?>
+                        </label>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="entra_tenant_id"><?php esc_html_e( 'Tenant ID', 'hugo-inventory' ); ?></label></th>
+                    <td>
+                        <input type="text" id="entra_tenant_id" name="entra_tenant_id" class="regular-text" value="<?php echo esc_attr( $s['entra_tenant_id'] ); ?>" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                        <p class="description"><?php esc_html_e( 'Your Azure AD / Entra ID tenant ID (a UUID).', 'hugo-inventory' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="entra_client_id"><?php esc_html_e( 'Client ID (Application ID)', 'hugo-inventory' ); ?></label></th>
+                    <td>
+                        <input type="text" id="entra_client_id" name="entra_client_id" class="regular-text" value="<?php echo esc_attr( $s['entra_client_id'] ); ?>" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                        <p class="description"><?php esc_html_e( 'The Application (client) ID from your App Registration.', 'hugo-inventory' ); ?></p>
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row"><label for="entra_client_secret"><?php esc_html_e( 'Client Secret', 'hugo-inventory' ); ?></label></th>
+                    <td>
+                        <input type="password" id="entra_client_secret" name="entra_client_secret" class="regular-text" value="" placeholder="<?php echo ! empty( $s['entra_client_secret_enc'] ) ? '••••••••••••••••' : ''; ?>">
+                        <p class="description">
+                            <?php if ( ! empty( $s['entra_client_secret_enc'] ) ) : ?>
+                                <?php esc_html_e( 'A secret is saved. Leave blank to keep it, or enter a new value to replace.', 'hugo-inventory' ); ?>
+                            <?php else : ?>
+                                <?php esc_html_e( 'Enter the client secret from your App Registration. It will be stored encrypted.', 'hugo-inventory' ); ?>
+                            <?php endif; ?>
+                        </p>
+                    </td>
+                </tr>
+                <?php if ( $s['entra_enabled'] && $s['entra_tenant_id'] && $s['entra_client_id'] && $s['entra_client_secret_enc'] ) : ?>
+                <tr>
+                    <th scope="row"><?php esc_html_e( 'Connection Status', 'hugo-inventory' ); ?></th>
+                    <td>
+                        <?php
+                        $entra = \Hugo_Inventory\Services\Entra_Client::from_settings();
+                        if ( $entra ) {
+                            $test = $entra->test_connection();
+                            if ( $test === true ) {
+                                echo '<span style="color:#46b450;"><span class="dashicons dashicons-yes-alt"></span> ' . esc_html__( 'Connected successfully.', 'hugo-inventory' ) . '</span>';
+                            } else {
+                                echo '<span style="color:#dc3232;"><span class="dashicons dashicons-dismiss"></span> ' . esc_html( $test->get_error_message() ) . '</span>';
+                            }
+                        }
+                        ?>
+                    </td>
+                </tr>
+                <?php endif; ?>
+            </table>
+
             <?php submit_button( __( 'Save Settings', 'hugo-inventory' ) ); ?>
         </form>
+        <?php
+        echo '</div>';
+    }
+
+    /**
+     * Render the Samanage CSV import page.
+     */
+    public function render_import_page(): void {
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'Unauthorized.', 'hugo-inventory' ) );
+        }
+
+        $org_options = \Hugo_Inventory\Models\Organization::dropdown_options();
+        $import_results = null;
+
+        // Handle form submission.
+        if ( isset( $_POST['hugo_inv_import_nonce'] ) && wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['hugo_inv_import_nonce'] ) ), 'hugo_inv_import' ) ) {
+
+            $org_id = isset( $_POST['organization_id'] ) ? absint( $_POST['organization_id'] ) : 0;
+
+            if ( ! $org_id ) {
+                $import_results = [
+                    'created' => 0,
+                    'skipped' => 0,
+                    'errors'  => [ __( 'Please select an organization.', 'hugo-inventory' ) ],
+                ];
+            } elseif ( empty( $_FILES['csv_file']['tmp_name'] ) || $_FILES['csv_file']['error'] !== UPLOAD_ERR_OK ) {
+                $import_results = [
+                    'created' => 0,
+                    'skipped' => 0,
+                    'errors'  => [ __( 'Please upload a valid CSV file.', 'hugo-inventory' ) ],
+                ];
+            } else {
+                // Validate file type.
+                $file_name = sanitize_file_name( $_FILES['csv_file']['name'] );
+                $ext       = strtolower( pathinfo( $file_name, PATHINFO_EXTENSION ) );
+
+                if ( $ext !== 'csv' ) {
+                    $import_results = [
+                        'created' => 0,
+                        'skipped' => 0,
+                        'errors'  => [ __( 'Only .csv files are accepted.', 'hugo-inventory' ) ],
+                    ];
+                } else {
+                    $tmp_path = $_FILES['csv_file']['tmp_name'];
+
+                    // Check if it's a zip containing a CSV.
+                    $finfo    = finfo_open( FILEINFO_MIME_TYPE );
+                    $mime     = finfo_file( $finfo, $tmp_path );
+                    finfo_close( $finfo );
+
+                    $csv_path = $tmp_path;
+
+                    // If the original file was .csv but it's actually a zip
+                    // (Samanage exports as .csv.zip), handle that too.
+                    if ( strpos( $file_name, '.zip' ) !== false || $mime === 'application/zip' ) {
+                        $extract_dir = sys_get_temp_dir() . '/hugo_inv_import_' . wp_generate_password( 8, false );
+                        wp_mkdir_p( $extract_dir );
+
+                        $zip = new \ZipArchive();
+                        if ( $zip->open( $tmp_path ) === true ) {
+                            $zip->extractTo( $extract_dir );
+                            $zip->close();
+
+                            // Find the CSV inside.
+                            $csv_files = glob( $extract_dir . '/*.csv' );
+                            if ( ! empty( $csv_files ) ) {
+                                $csv_path = $csv_files[0];
+                            } else {
+                                $import_results = [
+                                    'created' => 0,
+                                    'skipped' => 0,
+                                    'errors'  => [ __( 'No CSV file found inside the ZIP archive.', 'hugo-inventory' ) ],
+                                ];
+                            }
+                        } else {
+                            $import_results = [
+                                'created' => 0,
+                                'skipped' => 0,
+                                'errors'  => [ __( 'Could not open ZIP file.', 'hugo-inventory' ) ],
+                            ];
+                        }
+                    }
+
+                    if ( ! $import_results ) {
+                        $importer       = new Samanage_Importer( $org_id );
+                        $import_results = $importer->import( $csv_path );
+                    }
+
+                    // Clean up temp extraction dir.
+                    if ( isset( $extract_dir ) && is_dir( $extract_dir ) ) {
+                        array_map( 'unlink', glob( $extract_dir . '/*' ) );
+                        rmdir( $extract_dir );
+                    }
+                }
+            }
+        }
+
+        echo '<div class="wrap">';
+        echo '<h1>' . esc_html__( 'Import Assets', 'hugo-inventory' ) . '</h1>';
+
+        // Show results if we just ran an import.
+        if ( $import_results !== null ) {
+            $has_errors = ! empty( $import_results['errors'] );
+            $type       = $has_errors ? 'warning' : 'success';
+            echo '<div class="notice notice-' . esc_attr( $type ) . ' is-dismissible">';
+            echo '<p><strong>' . esc_html__( 'Import Complete', 'hugo-inventory' ) . '</strong></p>';
+            echo '<ul style="list-style: disc; padding-left: 20px;">';
+            echo '<li>' . sprintf(
+                /* translators: %d: number of assets created */
+                esc_html__( 'Assets created: %d', 'hugo-inventory' ),
+                (int) $import_results['created']
+            ) . '</li>';
+            echo '<li>' . sprintf(
+                /* translators: %d: number of rows skipped */
+                esc_html__( 'Rows skipped (duplicate or empty): %d', 'hugo-inventory' ),
+                (int) $import_results['skipped']
+            ) . '</li>';
+            if ( $has_errors ) {
+                echo '<li>' . sprintf(
+                    /* translators: %d: number of errors */
+                    esc_html__( 'Errors: %d', 'hugo-inventory' ),
+                    count( $import_results['errors'] )
+                ) . '</li>';
+            }
+            echo '</ul>';
+
+            if ( $has_errors ) {
+                echo '<details style="margin-bottom: 10px;"><summary>' . esc_html__( 'Show error details', 'hugo-inventory' ) . '</summary>';
+                echo '<ul style="list-style: disc; padding-left: 20px; color: #b32d2e;">';
+                foreach ( $import_results['errors'] as $error ) {
+                    echo '<li>' . esc_html( $error ) . '</li>';
+                }
+                echo '</ul></details>';
+            }
+
+            echo '</div>';
+        }
+
+        ?>
+        <div class="card" style="max-width: 720px; padding: 20px;">
+            <h2><?php esc_html_e( 'Samanage Hardware Export', 'hugo-inventory' ); ?></h2>
+            <p class="description">
+                <?php esc_html_e( 'Upload a CSV file exported from Samanage\'s hardware/asset tracking system. Assets will be imported with categories and locations auto-created as needed.', 'hugo-inventory' ); ?>
+            </p>
+
+            <form method="post" enctype="multipart/form-data">
+                <?php wp_nonce_field( 'hugo_inv_import', 'hugo_inv_import_nonce' ); ?>
+
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">
+                            <label for="organization_id"><?php esc_html_e( 'Organization', 'hugo-inventory' ); ?> <span class="required">*</span></label>
+                        </th>
+                        <td>
+                            <select id="organization_id" name="organization_id" required>
+                                <option value=""><?php esc_html_e( '— Select —', 'hugo-inventory' ); ?></option>
+                                <?php foreach ( $org_options as $oid => $oname ) : ?>
+                                    <option value="<?php echo esc_attr( $oid ); ?>"><?php echo esc_html( $oname ); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="description"><?php esc_html_e( 'All imported assets will be assigned to this organization.', 'hugo-inventory' ); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="csv_file"><?php esc_html_e( 'CSV File', 'hugo-inventory' ); ?> <span class="required">*</span></label>
+                        </th>
+                        <td>
+                            <input type="file" id="csv_file" name="csv_file" accept=".csv,.zip" required>
+                            <p class="description"><?php esc_html_e( 'Accepts .csv files or .csv.zip archives from Samanage.', 'hugo-inventory' ); ?></p>
+                        </td>
+                    </tr>
+                </table>
+
+                <h3><?php esc_html_e( 'Field Mapping', 'hugo-inventory' ); ?></h3>
+                <table class="widefat striped" style="max-width: 600px;">
+                    <thead>
+                        <tr>
+                            <th><?php esc_html_e( 'Samanage Field', 'hugo-inventory' ); ?></th>
+                            <th><?php esc_html_e( 'Inventory Field', 'hugo-inventory' ); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Name</td><td><?php esc_html_e( 'Asset Name', 'hugo-inventory' ); ?></td></tr>
+                        <tr><td>SSN</td><td><?php esc_html_e( 'Serial Number', 'hugo-inventory' ); ?></td></tr>
+                        <tr><td>Category</td><td><?php esc_html_e( 'Category (auto-created)', 'hugo-inventory' ); ?></td></tr>
+                        <tr><td>Status</td><td><?php esc_html_e( 'Status (mapped)', 'hugo-inventory' ); ?></td></tr>
+                        <tr><td>Site</td><td><?php esc_html_e( 'Location (auto-created)', 'hugo-inventory' ); ?></td></tr>
+                        <tr><td>Manufacturer + Model</td><td><?php esc_html_e( 'Description', 'hugo-inventory' ); ?></td></tr>
+                        <tr><td>OS / OS Version</td><td><?php esc_html_e( 'Description', 'hugo-inventory' ); ?></td></tr>
+                        <tr><td>Warranty End Date</td><td><?php esc_html_e( 'Warranty Expiration', 'hugo-inventory' ); ?></td></tr>
+                        <tr><td>IP, MAC, CPU, etc.</td><td><?php esc_html_e( 'Stored as asset metadata', 'hugo-inventory' ); ?></td></tr>
+                    </tbody>
+                </table>
+
+                <h3><?php esc_html_e( 'Status Mapping', 'hugo-inventory' ); ?></h3>
+                <table class="widefat striped" style="max-width: 400px;">
+                    <thead>
+                        <tr>
+                            <th><?php esc_html_e( 'Samanage', 'hugo-inventory' ); ?></th>
+                            <th><?php esc_html_e( 'Inventory', 'hugo-inventory' ); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Operational</td><td>Available</td></tr>
+                        <tr><td>Spare</td><td>Available</td></tr>
+                        <tr><td>In Repair</td><td>In Repair</td></tr>
+                        <tr><td>Broken</td><td>Retired</td></tr>
+                        <tr><td>Missing</td><td>Lost</td></tr>
+                    </tbody>
+                </table>
+
+                <p style="margin-top: 16px;">
+                    <strong><?php esc_html_e( 'Note:', 'hugo-inventory' ); ?></strong>
+                    <?php esc_html_e( 'Duplicate assets (matching serial number) will be skipped. This import can be run multiple times safely.', 'hugo-inventory' ); ?>
+                </p>
+
+                <?php submit_button( __( 'Import Assets', 'hugo-inventory' ), 'primary', 'submit', true, [ 'onclick' => "return confirm('" . esc_js( __( 'This will import assets into the selected organization. Continue?', 'hugo-inventory' ) ) . "');" ] ); ?>
+            </form>
+        </div>
         <?php
         echo '</div>';
     }

@@ -48,7 +48,22 @@ class Migrator {
      */
     private static function get_migrations(): array {
         return [
-            // '1.1.0' => [ self::class, 'migrate_to_1_1_0' ],
+            '1.1.0' => [ self::class, 'migrate_to_1_1_0' ],
         ];
+    }
+
+    /**
+     * Migration 1.1.0 — Add Entra ID columns to assets table.
+     */
+    private static function migrate_to_1_1_0(): void {
+        global $wpdb;
+        $table = $wpdb->prefix . 'inventory_assets';
+
+        $col = $wpdb->get_var( "SHOW COLUMNS FROM {$table} LIKE 'assigned_entra_id'" );
+        if ( ! $col ) {
+            $wpdb->query( "ALTER TABLE {$table} ADD COLUMN assigned_entra_id varchar(100) DEFAULT NULL AFTER assigned_user_id" );
+            $wpdb->query( "ALTER TABLE {$table} ADD COLUMN assigned_entra_name varchar(255) DEFAULT NULL AFTER assigned_entra_id" );
+            $wpdb->query( "ALTER TABLE {$table} ADD INDEX assigned_entra_id (assigned_entra_id)" );
+        }
     }
 }

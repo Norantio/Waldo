@@ -151,11 +151,14 @@ class Assets_List_Table extends \WP_List_Table {
      * Assigned user column.
      */
     public function column_assigned_user( $item ): string {
-        if ( empty( $item->assigned_user_id ) ) {
-            return '—';
+        if ( ! empty( $item->assigned_user_id ) ) {
+            $user = get_userdata( (int) $item->assigned_user_id );
+            return $user ? esc_html( $user->display_name ) : '—';
         }
-        $user = get_userdata( (int) $item->assigned_user_id );
-        return $user ? esc_html( $user->display_name ) : '—';
+        if ( ! empty( $item->assigned_entra_name ) ) {
+            return esc_html( $item->assigned_entra_name );
+        }
+        return '—';
     }
 
     /**

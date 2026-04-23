@@ -50,6 +50,14 @@
             $(document).on('keydown', function(e) {
                 if (!self.isActive) return;
 
+                // Don't intercept scans when a barcode/serial input is focused —
+                // let the value go directly into the field.
+                var focusedId = (e.target.id || '').toLowerCase();
+                if (focusedId === 'barcode_value' || focusedId === 'serial_number' || focusedId === 'asset_tag') {
+                    self.buffer = '';
+                    return;
+                }
+
                 var now = Date.now();
                 var timeDiff = now - self.lastKeyTime;
 
@@ -199,6 +207,86 @@
     // Boot the scanner listener when DOM is ready.
     $(document).ready(function() {
         Scanner.init();
+
+        // ── Select2: Assigned User search (WP + Entra) ────────
+        if ($('#assigned_user_search').length && $.fn.select2) {
+            $('#assigned_user_search').select2({
+                placeholder: '— Unassigned —',
+                allowClear: true,
+                minimumInputLength: 2,
+                ajax: {
+                    url: hugoInventory.restUrl + 'users/search',
+                    dataType: 'json',
+                    delay: 300,
+                    beforeSend: function(xhr) {
+                        xhr.setRequestHeader('X-WP-Nonce', hugoInventory.nonce);
+                    },
+                    data: function(params) {
+                        return { q: params.term };
+                    },
+                    processResults: function(data) {
+                        var results = [];
+                        var wpGroup = [];
+                        var entraGroup = [];
+
+                        $.each(data.results || [], function(i, u) {
+                            var item = {
+                                id: u.source + ':' + u.id,
+                                text: u.text + (u.email ? ' (' + u.email + ')' : ''),
+                                source: u.source,
+                                sourceId: u.id,
+                                displayName: u.text
+                            };
+                            if (u.source === 'wp') {
+                                wpGroup.push(item);
+                            } else {
+                                entraGroup.push(item);
+                            }
+                        });
+
+                        if (wpGroup.length) {
+                            results.push({ text: 'WordPress Users', children: wpGroup });
+                        }
+                        if (entraGroup.length) {
+                            results.push({ text: 'Entra ID Directory', children: entraGroup });
+                        }
+                        // If no groups, return flat
+                        if (!wpGroup.length && !entraGroup.length) {
+                            results = [];
+                        }
+
+                        return { results: results };
+                    },
+                    cache: true
+                },
+                templateResult: function(item) {
+                    if (item.loading) return item.text;
+                    var $el = $('<span>');
+                    $el.text(item.text);
+                    if (item.source) {
+                        var badge = item.source === 'entra' ? 'Entra' : 'WP';
+                        var color = item.source === 'entra' ? '#0078d4' : '#0073aa';
+                        $el.append(' <span style="background:' + color + ';color:#fff;font-size:10px;padding:1px 5px;border-radius:3px;margin-left:4px;">' + badge + '</span>');
+                    }
+                    return $el;
+                }
+            }).on('select2:select', function(e) {
+                var d = e.params.data;
+                if (d.source === 'entra') {
+                    $('#assigned_user_id').val('');
+                    $('#assigned_entra_id').val(d.sourceId);
+                    $('#assigned_entra_name').val(d.displayName);
+                } else {
+                    $('#assigned_user_id').val(d.sourceId);
+                    $('#assigned_entra_id').val('');
+                    $('#assigned_entra_name').val('');
+                }
+            }).on('select2:clear', function() {
+                $('#assigned_user_id').val('');
+                $('#assigned_entra_id').val('');
+                $('#assigned_entra_name').val('');
+            });
+        }
 
         // ── Dashboard: Scan panel toggle ───────────────────────
         $('#hugo-inv-scan-btn').on('click', function() {

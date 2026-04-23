@@ -153,4 +153,92 @@ class Checkout {
         ) );
         return $rows ?: [];
     }
+
+    /**
+     * Recent checkout/checkin activity feed.
+     *
+     * Returns up to $limit rows ordered by event_date DESC, each with:
+     * event_date, event (checkout|checkin), asset_tag, asset_name, asset_id, user_name, organization_name.
+     */
+    public static function recent_activity( int $limit = 10, ?int $organization_id = null ): array {
+        global $wpdb;
+        $t   = self::table();
+        $ta  = $wpdb->prefix . 'inventory_assets';
+        $to  = $wpdb->prefix . 'inventory_organizations';
+
+        $org_clause = '';
+        $params     = [];
+        if ( $organization_id !== null ) {
+            $org_clause = 'AND a.organization_id = %d';
+            $params[]   = (int) $organization_id; // checkout branch
+            $params[]   = (int) $organization_id; // checkin branch
+        }
+        $params[] = $limit;
+
+        $sql = "SELECT * FROM (
+            SELECT c.checkout_date AS event_date, 'checkout' AS event,
+                   a.asset_tag, a.name AS asset_name, a.id AS asset_id,
+                   u.display_name AS user_name, o.name AS organization_name
+            FROM {$t} c
+            INNER JOIN {$ta} a ON c.asset_id = a.id
+            LEFT JOIN {$to} o ON a.organization_id = o.id
+            LEFT JOIN {$wpdb->users} u ON c.checked_out_to = u.ID
+            WHERE c.checkout_date IS NOT NULL {$org_clause}
+            UNION ALL
+            SELECT c.checkin_date AS event_date, 'checkin' AS event,
+                   a.asset_tag, a.name AS asset_name, a.id AS asset_id,
+                   u.display_name AS user_name, o.name AS organization_name
+            FROM {$t} c
+            INNER JOIN {$ta} a ON c.asset_id = a.id
+            LEFT JOIN {$to} o ON a.organization_id = o.id
+            LEFT JOIN {$wpdb->users} u ON c.checkin_by = u.ID
+            WHERE c.checkin_date IS NOT NULL {$org_clause}
+        ) sub
+        ORDER BY event_date DESC
+        LIMIT %d";
+
+        if ( $params ) {
+            $sql = $wpdb->prepare( $sql, ...$params ); // phpcs:ignore WordPress.DB.PreparedSQL
+        }
+
+        return $wpdb->get_results( $sql ) ?: []; // phpcs:ignore WordPress.DB.PreparedSQL
+    }
+
+    /**
+     * Overdue checkouts — assets not returned past their expected_return_date.
+     *
+     * Each row: asset_id, asset_tag, asset_name, organization_name, user_name,
+     *           checkout_date, expected_return_date, days_overdue.
+     */
+    public static function overdue( int $limit = 20, ?int $organization_id = null ): array {
+        global $wpdb;
+        $t   = self::table();
+        $ta  = $wpdb->prefix . 'inventory_assets';
+        $to  = $wpdb->prefix . 'inventory_organizations';
+
+        $where  = 'c.checkin_date IS NULL AND c.expected_return_date IS NOT NULL AND c.expected_return_date < CURDATE()';
+        $params = [];
+        if ( $organization_id !== null ) {
+            $where   .= ' AND a.organization_id = %d';
+            $params[] = (int) $organization_id;
+        }
+        $params[] = $limit;
+
+        $sql = $wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL
+            "SELECT a.id AS asset_id, a.asset_tag, a.name AS asset_name,
+                    o.name AS organization_name, u.display_name AS user_name,
+                    c.checkout_date, c.expected_return_date,
+                    DATEDIFF(CURDATE(), c.expected_return_date) AS days_overdue
+             FROM {$t} c
+             INNER JOIN {$ta} a ON c.asset_id = a.id
+             LEFT JOIN {$to} o ON a.organization_id = o.id
+             LEFT JOIN {$wpdb->users} u ON c.checked_out_to = u.ID
+             WHERE {$where}
+             ORDER BY c.expected_return_date ASC
+             LIMIT %d",
+            ...$params
+        );
+
+        return $wpdb->get_results( $sql ) ?: []; // phpcs:ignore WordPress.DB.PreparedSQL
+    }
 }
