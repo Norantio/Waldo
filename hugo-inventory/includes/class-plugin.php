@@ -39,8 +39,13 @@ final class Plugin {
         // Frontend shortcodes (always loaded — Oxygen renders outside is_admin).
         new Shortcodes();
 
-        // Oxygen Classic custom elements (only when Oxygen is active).
-        new OxygenElements();
+        // Oxygen Classic custom elements — deferred to `init` so that OxyEl is
+        // already defined by Oxygen before we load a file that extends it.
+        add_action( 'init', static function (): void {
+            if ( class_exists( 'OxyEl' ) ) {
+                new OxygenElements();
+            }
+        }, 1 );
 
         // REST API
         add_action( 'rest_api_init', [ $this, 'register_rest_routes' ] );
